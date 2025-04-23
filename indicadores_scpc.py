@@ -1,4 +1,3 @@
-
 import schedule
 import time
 import threading
@@ -73,7 +72,10 @@ def initialize_session_state():
 
 def configure_locale():
     """Configura o locale para português do Brasil."""
-    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+    try:
+        locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+    except locale.Error as e:
+        st.warning(f"Não foi possível configurar o locale para pt_BR.UTF-8: {e}. Verifique se o locale está instalado no seu sistema.")
 
 def configure_page():
     """Configura a página do Streamlit."""
@@ -365,6 +367,37 @@ def log_user_action(action, username, USER_LOG_FILE):
     log.append(log_entry)
     save_user_log(log, USER_LOG_FILE)
 
+
+def delete_result(indicator_id, data_referencia, RESULTS_FILE, USER_LOG_FILE):
+    """Exclui um resultado específico de um indicador e registra a ação."""
+    if not data_referencia or data_referencia == "N/A":
+        st.error("Data de referência ausente. Impossível excluir este resultado.")
+        return
+
+    results = load_results(RESULTS_FILE)
+
+    # Converter data_referencia para o formato ISO 8601 para comparação
+    try:
+        data_referencia_iso = datetime.fromisoformat(data_referencia).isoformat()
+    except ValueError:
+        st.error("Formato de data inválido. Impossível excluir este resultado.")
+        return
+
+    # Filtrar os resultados para excluir o resultado específico
+    updated_results = [
+        r for r in results
+        if not (r["indicator_id"] == indicator_id and r["data_referencia"] == data_referencia_iso)
+    ]
+
+    save_results(updated_results, RESULTS_FILE)
+
+    # Registrar a ação no log
+    log_user_action(f"Resultado excluído do indicador {indicator_id} para {data_referencia}", st.session_state.username,
+                    USER_LOG_FILE)
+
+    st.success("Resultado e análise crítica excluídos com sucesso!")
+    st.rerun()
+
 def delete_user(username, USERS_FILE, USER_LOG_FILE):
     """Exclui um usuário do arquivo de usuários."""
     users = load_users(USERS_FILE)
@@ -444,7 +477,7 @@ def save_results(results, RESULTS_FILE):
     """Salva os resultados no arquivo."""
     try:
         with open(RESULTS_FILE, "w") as f:
-            json.dump(results, f, indent=4)
+            json.dump(results, f, indent=4, default=str)
     except Exception as e:
         st.error(f"Erro ao salvar o arquivo de resultados: {e}")
 
@@ -984,7 +1017,28 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO):
+def display_result_with_delete(result, selected_indicator, RESULTS_FILE, USER_LOG_FILE):
+    """Exibe um resultado com a opção de excluir."""
+    data_referencia = result.get('data_referencia')
+    if data_referencia:
+        col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])  # Ajuste as proporções das colunas
+        with col1:
+            st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
+        with col2:
+            st.write(result.get('resultado', 'N/A'))
+        with col3:
+            st.write(result.get('observacao', 'N/A'))
+        with col4:
+            st.write(result.get('status_analise', 'N/A'))
+        with col5:
+            st.write(pd.to_datetime(result.get('data_atualizacao')).strftime("%d/%m/%Y %H:%M") if result.get('data_atualizacao') else 'N/A')
+        with col6:
+            if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}"):
+                delete_result(selected_indicator['id'], data_referencia, RESULTS_FILE, USER_LOG_FILE)
+    else:
+        st.warning("Data de referência ausente. Impossível excluir este resultado.")
+
+def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG_FILE, USERS_FILE):
     """Mostra a página de preenchimento de indicador."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
     st.header("Preencher Indicador")
@@ -1008,7 +1062,7 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO):
         if not indicators:
             st.info(f"Não há indicadores associados ao seu setor ({user_sector}).")
             st.markdown('</div>', unsafe_allow_html=True)
-            return
+        return
 
     # Selecionar indicador para preencher
     indicator_names = [ind["nome"] for ind in indicators]
@@ -1091,7 +1145,7 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO):
                 why = st.text_area("Por que (Why)",
                                    placeholder="Por que isso está acontecendo? Quais são as causas?")
                 who = st.text_area("Quem (Who)",
-                                   placeholder="Quem é responsável? Quem está envolvido?")
+                                    placeholder="Quem é responsável? Quem está envolvido?")
                 when = st.text_area("Quando (When)",
                                     placeholder="Quando isso aconteceu? Qual é o prazo para resolução?")
                 where = st.text_area("Onde (Where)",
@@ -1159,96 +1213,25 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO):
         # Exibir resultados anteriores
         st.subheader("Resultados Anteriores")
         if indicator_results:
-            df_results = pd.DataFrame(indicator_results)
-            # Limpar as strings e converter para datetime
-            df_results["data_referencia"] = df_results["data_referencia"].str.split('T').str[0]
-            df_results["data_referencia"] = pd.to_datetime(df_results["data_referencia"], format='%Y-%m-%d')
-            df_results = df_results.sort_values("data_referencia", ascending=False)
-            df_display = df_results.copy()
-            df_display["Período"] = df_display["data_referencia"].apply(lambda x: x.strftime("%B/%Y"))
-            df_display["Resultado"] = df_display["resultado"]
-            if "observacao" in df_display.columns:
-                df_display["Observações"] = df_display["observacao"]
-            else:
-                df_display["Observações"] = ""
-            if "data_atualizacao" in df_display.columns:
-                df_display["Data de Atualização"] = pd.to_datetime(df_display["data_atualizacao"]).dt.strftime(
-                    "%d/%m/%Y %H:%M")
-            else:
-                df_display["Data de Atualização"] = "N/A"
+            # Exibir cabeçalho da tabela
+            col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
+            with col1:
+                st.markdown("**Período**")
+            with col2:
+                st.markdown("**Resultado**")
+            with col3:
+                st.markdown("**Observações**")
+            with col4:
+                st.markdown("**Análise Crítica**")
+            with col5:
+                st.markdown("**Data de Atualização**")
+            with col6:
+                st.markdown("**Ações**")
 
-            # Verificar o status da análise crítica para cada resultado
-            if "analise_critica" in df_display.columns:
-                df_display["Análise Crítica"] = df_display.apply(
-                    lambda row: row.get("status_analise", "") if "status_analise" in row else (
-                        get_analise_status(row["analise_critica"]) if row["analise_critica"] else "❌ Não preenchida"
-                    ), axis=1
-                )
-            else:
-                df_display["Análise Crítica"] = "❌ Não preenchida"
+            # Iterar sobre os resultados e exibir cada um com a opção de excluir
+            for result in indicator_results:
+                display_result_with_delete(result, selected_indicator, RESULTS_FILE, USER_LOG_FILE)
 
-            df_display = df_display[["Período", "Resultado", "Observações", "Análise Crítica", "Data de Atualização"]]
-            st.dataframe(df_display, use_container_width=True)
-
-            # Substituir a seção de edição por visualização apenas
-            st.subheader("Visualizar Análise Crítica")
-            periodos = df_results["data_referencia"].dt.strftime("%B/%Y").tolist()
-            selected_periodo = st.selectbox("Selecione um período:", periodos)
-            selected_result = df_results[df_results["data_referencia"].dt.strftime("%B/%Y") == selected_periodo].iloc[0]
-
-            has_analise = False
-            analise_dict = {"what": "", "why": "", "who": "", "when": "", "where": "", "how": "", "howMuch": ""}
-            if "analise_critica" in selected_result and selected_result["analise_critica"]:
-                try:
-                    analise_dict = json.loads(selected_result["analise_critica"])
-                    has_analise = any(v.strip() for k, v in analise_dict.items() if k != "status_preenchimento")
-                except:
-                    pass
-
-            with st.expander("Análise Crítica 5W2H", expanded=True):
-                if has_analise:
-                    st.info(f"Visualizando análise crítica para o período {selected_periodo}")
-
-                    # Exibir campos como texto estático, não como campos editáveis
-                    st.markdown("#### O que (What)")
-                    st.text(analise_dict.get("what", ""))
-
-                    st.markdown("#### Por que (Why)")
-                    st.text(analise_dict.get("why", ""))
-
-                    st.markdown("#### Quem (Who)")
-                    st.text(analise_dict.get("who", ""))
-
-                    st.markdown("#### Quando (When)")
-                    st.text(analise_dict.get("when", ""))
-
-                    st.markdown("#### Onde (Where)")
-                    st.text(analise_dict.get("where", ""))
-
-                    st.markdown("#### Como (How)")
-                    st.text(analise_dict.get("how", ""))
-
-                    st.markdown("#### Quanto custa (How Much)")
-                    st.text(analise_dict.get("howMuch", ""))
-
-                    # Exibir status do preenchimento
-                    status = analise_dict.get("status_preenchimento", selected_result.get("status_analise", ""))
-                    if status:
-                        st.markdown(f"**Status do preenchimento:** {status}")
-                else:
-                    st.warning(f"Não há análise crítica para o período {selected_periodo}.")
-
-            st.subheader("Gráfico de Evolução")
-            fig = create_chart(selected_indicator["id"], selected_indicator["tipo_grafico"], INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Não foi possível gerar o gráfico.")
-            if st.button("📤 Exportar para Excel"):
-                export_df = df_display.copy()
-                download_link = get_download_link(export_df,
-                                                  f"resultados_{selected_indicator['nome'].replace(' ', '_')}.xlsx")
-                st.markdown(download_link, unsafe_allow_html=True)
         else:
             st.info("Nenhum resultado registrado para este indicador.")
 
@@ -2724,6 +2707,9 @@ def main():
     # Inicializar o estado da sessão
     initialize_session_state()
 
+    # Define local pt-br
+    configure_locale()
+
     # Get the file paths from the global scope
     DATA_DIR, INDICATORS_FILE, RESULTS_FILE, CONFIG_FILE, USERS_FILE, BACKUP_LOG_FILE, INDICATOR_LOG_FILE, USER_LOG_FILE, KEY_FILE = define_data_directories()
 
@@ -2879,19 +2865,21 @@ def main():
     st.sidebar.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
 
     # Sidebar - Perfil do usuário
-    st.sidebar.markdown(f"""
-    <div class="user-profile">
-        <p style="margin:0; font-weight:bold;">{st.session_state.username}</p>
-        <p style="margin:0; font-size:12px; color:#666;">{user_type}</p>
-        {f'<p style="margin:0; font-size:12px; color:#666;">Setor: {user_sector}</p>' if user_type == "Operador" else ''}
-    </div>
-    """, unsafe_allow_html=True)
+    with st.sidebar.container():
+        col1, col2 = st.columns([3, 1])  # Ajuste as proporções das colunas conforme necessário
 
-    # Botão de logout
-    if st.sidebar.button("🚪 Sair", help="Fazer logout"):
-        logout()
+        with col1:
+            st.markdown(f"""
+            <div style="background-color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #e0e0e0;">
+                <p style="margin:0; font-weight:bold;">{st.session_state.username}</p>
+                <p style="margin:0; font-size:12px; color:#666;">{st.session_state.user_type}</p>
+                {'<p style="margin:0; font-size:12px; color:#666;">Setor: ' + st.session_state.user_sector + '</p>' if st.session_state.user_type == "Operador" else ''}
+            </div>
+            """, unsafe_allow_html=True)
 
-    st.sidebar.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+        with col2:
+            if st.button("🚪", help="Fazer logout"):
+                logout()
 
     # Inicializar página atual se não existir
     if 'page' not in st.session_state:
@@ -2940,7 +2928,8 @@ def main():
     elif st.session_state.page == "Editar Indicador" and user_type == "Administrador":
         edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE, RESULTS_FILE)
     elif st.session_state.page == "Preencher Indicador" and user_type in ["Administrador", "Operador"]:
-        fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO)
+        # Correção: incluir USER_LOG_FILE e USERS_FILE na chamada
+        fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG_FILE, USERS_FILE)
     elif st.session_state.page == "Visão Geral":
         show_overview(INDICATORS_FILE, RESULTS_FILE)
     elif st.session_state.page == "Configurações" and user_type == "Administrador":
