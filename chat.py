@@ -14,6 +14,18 @@ import io
 # Configuração da página
 st.set_page_config(page_title="Chat Secreto", page_icon="🔒", layout="wide")
 
+# Esconder elementos padrão do Streamlit
+st.markdown("""
+<style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    .block-container {padding-top: 0rem; padding-bottom: 0rem;}
+    .css-18e3th9 {padding-top: 0rem; padding-bottom: 0rem;}
+    .css-1d391kg {padding-top: 0rem; padding-bottom: 0rem;}
+</style>
+""", unsafe_allow_html=True)
+
 # Arquivo para armazenar as salas
 ROOMS_FILE = "chat_rooms.json"
 # Pasta para armazenar imagens
