@@ -3,6 +3,7 @@ import time
 import threading
 import streamlit as st
 import os
+import re
 import json
 import hashlib
 import pandas as pd
@@ -13,6 +14,7 @@ import plotly.express as px
 import locale
 from cryptography.fernet import Fernet
 from pathlib import Path  # Adicione esta linha
+from sympy import symbols, sympify, SympifyError # Para cálculo seguro e detecção de símbolos
 
 DATA_DIR = "data"
 INDICATORS_FILE = os.path.join(DATA_DIR, "indicators.json")
@@ -69,6 +71,16 @@ def initialize_session_state():
     """Inicializa o estado da sessão do Streamlit."""
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
+    # Adicionar estados para a criação/edição dinâmica
+    if 'current_formula_vars' not in st.session_state:
+        st.session_state.current_formula_vars = [] # Lista de variáveis detectadas (ex: ['A', 'B', 'C'])
+    if 'current_var_descriptions' not in st.session_state:
+        st.session_state.current_var_descriptions = {} # Dicionário {variavel: descricao}
+    if 'editing_indicator_id' not in st.session_state:
+        st.session_state.editing_indicator_id = None # Para saber qual indicador está sendo editado
+    # Adicionar estado para armazenar os valores das variáveis ao preencher
+    if 'current_variable_values' not in st.session_state:
+         st.session_state.current_variable_values = {}
 
 def configure_locale():
     """Configura o locale para português do Brasil."""
@@ -302,10 +314,17 @@ def load_indicators(INDICATORS_FILE):
     try:
         with open(INDICATORS_FILE, "r") as f:
             indicators = json.load(f)
+            # Garantir que cada indicador tem a estrutura esperada para fórmula e variáveis
+            for ind in indicators:
+                if "formula" not in ind:
+                    ind["formula"] = ""
+                if "variaveis" not in ind:
+                    ind["variaveis"] = {} # Dicionário {variavel: descricao}
             return indicators
     except FileNotFoundError:
         return []
     except json.JSONDecodeError:
+        st.error("Erro ao decodificar o arquivo de indicadores. O arquivo pode estar corrompido.")
         return []
 
 def save_indicators(indicators, INDICATORS_FILE):
@@ -466,7 +485,12 @@ def load_results(RESULTS_FILE):
     """Carrega os resultados do arquivo."""
     try:
         with open(RESULTS_FILE, "r") as f:
-            return json.load(f)
+            results = json.load(f)
+            # Garantir que cada resultado tem a estrutura esperada para valores_variaveis
+            for res in results:
+                if "valores_variaveis" not in res:
+                    res["valores_variaveis"] = {} # Dicionário {variavel: valor}
+            return results
     except FileNotFoundError:
         return []
     except json.JSONDecodeError:
@@ -841,21 +865,85 @@ def show_login_page():
             unsafe_allow_html=True)
 
 def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE):
-    """Mostra a página de criação de indicador."""
+    """Mostra a página de criação de indicador com fórmula dinâmica."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
     st.header("Criar Novo Indicador")
 
-    # Limpar variáveis de sessão específicas do Dashboard
+    # Limpar variáveis de sessão específicas do Dashboard e edição
     if 'dashboard_data' in st.session_state:
         del st.session_state['dashboard_data']
+    # Limpar estados de edição ao criar um novo
+    st.session_state.editing_indicator_id = None
+    st.session_state.current_formula_vars = []
+    st.session_state.current_var_descriptions = {}
+
 
     # Formulário para criar indicador
     with st.form("criar_indicador"):
         nome = st.text_input("Nome do Indicador", placeholder="Ex: Taxa de Turnover")
         objetivo = st.text_area("Objetivo", placeholder="Descreva o objetivo deste indicador")
-        calculo = st.text_area("Fórmula de Cálculo",
-                               placeholder="Ex: (Número de Demissões / Número Total de Funcionários) * 100")
-        meta = st.number_input("Meta", step=0.01)
+
+        # Campo para a fórmula
+        formula = st.text_input(
+            "Fórmula de Cálculo (Use letras para variáveis, ex: A+B/C)",
+            placeholder="Ex: (DEMISSOES / TOTAL_FUNCIONARIOS) * 100",
+            key="create_formula_input" # Chave única para este input
+        )
+
+        # Botão para detectar variáveis (opcional, pode ser automático no submit)
+        # if st.form_submit_button("Detectar Variáveis"):
+        #     st.session_state.current_formula_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', formula))))
+        #     st.session_state.current_var_descriptions = {var: "" for var in st.session_state.current_formula_vars} # Inicializa descrições vazias
+        #     st.rerun() # Rerun para mostrar os campos de descrição
+
+        # Detectar variáveis automaticamente ao digitar (pode ser custoso em reruns frequentes)
+        # Uma alternativa é detectar apenas no submit ou com um botão explícito.
+        # Vamos detectar no submit para simplificar o estado da sessão.
+
+        # Campos para definir a descrição das variáveis (aparecem após a fórmula ser inserida e variáveis detectadas)
+        st.markdown("---")
+        st.subheader("Definição das Variáveis na Fórmula")
+
+        # Se a fórmula mudou, limpa as descrições anteriores
+        # if st.session_state.get('last_create_formula', '') != formula:
+        #      st.session_state.current_formula_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', formula))))
+        #      st.session_state.current_var_descriptions = {var: "" for var in st.session_state.current_formula_vars}
+        #      st.session_state.last_create_formula = formula # Armazena a fórmula atual
+
+        # Detectar variáveis para exibição dos campos de descrição
+        detected_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', formula))))
+
+        if detected_vars:
+            st.info(f"Variáveis detectadas na fórmula: {', '.join(detected_vars)}")
+            st.write("Defina a descrição para cada variável:")
+
+            # Usar colunas para organizar os inputs de descrição
+            cols = st.columns(min(3, len(detected_vars)))
+            new_var_descriptions = {}
+            for i, var in enumerate(detected_vars):
+                col_idx = i % len(cols)
+                with cols[col_idx]:
+                    # Usar a descrição existente se houver, caso contrário, usar a variável como placeholder
+                    default_description = st.session_state.current_var_descriptions.get(var, "")
+                    new_var_descriptions[var] = st.text_input(
+                        f"Descrição para '{var}'",
+                        value=default_description,
+                        placeholder=f"Ex: {var} - Número de Atendimentos",
+                        key=f"desc_input_{var}_create" # Chave única
+                    )
+            # Atualiza o estado da sessão com as descrições preenchidas
+            st.session_state.current_var_descriptions = new_var_descriptions
+            st.session_state.current_formula_vars = detected_vars # Atualiza a lista de variáveis no estado
+
+        else:
+            st.warning("Nenhuma variável (letras) encontrada na fórmula. O resultado será fixo.")
+            st.session_state.current_formula_vars = []
+            st.session_state.current_var_descriptions = {}
+
+
+        # Outros campos do indicador
+        st.markdown("---")
+        meta = st.number_input("Meta", step=0.01, format="%.4f") # Ajustar formato se necessário
         comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"])
         tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS)
         responsavel = st.selectbox("Setor Responsável", SETORES)
@@ -863,24 +951,43 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         submitted = st.form_submit_button("➕ Criar")
 
         if submitted:
-            if nome and objetivo and calculo and meta:
+            # Validar a fórmula antes de salvar
+            if formula:
+                try:
+                    # Tenta parsear a fórmula para verificar a sintaxe básica
+                    sympify(formula)
+                except SympifyError as e:
+                    st.error(f"❌ Erro na sintaxe da fórmula: {e}")
+                    # Não prossegue com a criação se a fórmula for inválida
+                    return
+                except Exception as e:
+                     st.error(f"❌ Erro inesperado ao validar a fórmula: {e}")
+                     return
+
+            # Validar se todas as variáveis detectadas têm descrição (opcional, mas recomendado)
+            # if st.session_state.current_formula_vars and any(desc.strip() == "" for desc in st.session_state.current_var_descriptions.values()):
+            #      st.error("❌ Por favor, defina a descrição para todas as variáveis detectadas.")
+            #      return # Impede a criação se faltar descrição
+
+            if nome and objetivo and formula and meta is not None: # Meta pode ser 0
                 # Efeito de carregamento
                 with st.spinner("Criando indicador..."):
-                    time.sleep(0.5)  # Pequeno delay para efeito visual
+                    time.sleep(0.5)
 
                     # Carregar indicadores existentes
                     indicators = load_indicators(INDICATORS_FILE)
 
                     # Verificar se já existe um indicador com o mesmo nome
                     if any(ind["nome"] == nome for ind in indicators):
-                        st.error(f"Já existe um indicador com o nome '{nome}'.")
+                        st.error(f"❌ Já existe um indicador com o nome '{nome}'.")
                     else:
-                        # Criar novo indicador
+                        # Criar novo indicador com os novos campos
                         new_indicator = {
                             "id": generate_id(),
                             "nome": nome,
                             "objetivo": objetivo,
-                            "calculo": calculo,
+                            "formula": formula, # Salva a fórmula
+                            "variaveis": st.session_state.current_var_descriptions, # Salva as descrições das variáveis
                             "meta": meta,
                             "comparacao": comparacao,
                             "tipo_grafico": tipo_grafico,
@@ -892,15 +999,23 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                         # Adicionar à lista e salvar
                         indicators.append(new_indicator)
                         save_indicators(indicators, INDICATORS_FILE)
-                        log_indicator_action("Indicador criado", new_indicator["id"], INDICATOR_LOG_FILE)  # Registrar ação de criação
+                        log_indicator_action("Indicador criado", new_indicator["id"], INDICATOR_LOG_FILE)
 
-                        st.success(f"Indicador '{nome}' criado com sucesso!")
+                        st.success(f"✅ Indicador '{nome}' criado com sucesso!")
+
+                        # Limpar estado da sessão após a criação bem-sucedida
+                        st.session_state.current_formula_vars = []
+                        st.session_state.current_var_descriptions = {}
+                        # del st.session_state.last_create_formula # Limpa a fórmula armazenada
+
+                        st.rerun() # Recarrega a página para limpar o formulário
             else:
-                st.warning("Todos os campos são obrigatórios.")
+                st.warning("⚠️ Por favor, preencha todos os campos obrigatórios (Nome, Objetivo, Fórmula, Meta).")
     st.markdown('</div>', unsafe_allow_html=True)
 
+
 def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE, RESULTS_FILE):
-    """Mostra a página de edição de indicador."""
+    """Mostra a página de edição de indicador com fórmula dinâmica."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
     st.header("Editar Indicador")
 
@@ -916,27 +1031,126 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
 
     # Selecionar indicador para editar
     indicator_names = [ind["nome"] for ind in indicators]
-    selected_indicator_name = st.selectbox("Selecione um indicador para editar:", indicator_names)
+    # Usar o ID do indicador no estado da sessão se estiver editando um
+    selected_indicator_id_from_state = st.session_state.editing_indicator_id
+
+    # Encontrar o índice do indicador selecionado (se houver um no estado)
+    initial_index = 0
+    if selected_indicator_id_from_state:
+         try:
+             # Encontra o índice do indicador com o ID salvo no estado
+             initial_index = next(i for i, ind in enumerate(indicators) if ind["id"] == selected_indicator_id_from_state)
+         except StopIteration:
+             # Indicador do estado não encontrado (talvez foi excluído), resetar estado
+             st.session_state.editing_indicator_id = None
+             st.session_state.current_formula_vars = []
+             st.session_state.current_var_descriptions = {}
+             st.session_state.current_variable_values = {} # Limpa também os valores de variáveis
+
+
+    selected_indicator_name = st.selectbox(
+        "Selecione um indicador para editar:",
+        indicator_names,
+        index=initial_index if initial_index < len(indicator_names) else 0,
+        key="edit_indicator_select" # Chave única para este selectbox
+    )
 
     # Encontrar o indicador selecionado
     selected_indicator = next((ind for ind in indicators if ind["nome"] == selected_indicator_name), None)
 
     if selected_indicator:
+        # Carregar a fórmula e variáveis existentes para o estado da sessão ao selecionar um novo indicador
+        # Verifica se o indicador selecionado mudou ou se os estados de fórmula/variáveis estão vazios
+        if st.session_state.editing_indicator_id != selected_indicator["id"] or not st.session_state.current_formula_vars:
+             st.session_state.editing_indicator_id = selected_indicator["id"]
+             # Carrega a fórmula existente do indicador
+             existing_formula = selected_indicator.get("formula", "")
+             st.session_state.current_formula_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', existing_formula))))
+             # Carrega as descrições de variáveis existentes do indicador
+             st.session_state.current_var_descriptions = selected_indicator.get("variaveis", {})
+             # Garantir que todas as variáveis detectadas tenham uma entrada no dicionário de descrições
+             for var in st.session_state.current_formula_vars:
+                  if var not in st.session_state.current_var_descriptions:
+                       st.session_state.current_var_descriptions[var] = ""
+             # Remover descrições de variáveis que não estão mais na fórmula (limpeza)
+             vars_to_remove = [v for v in st.session_state.current_var_descriptions if v not in st.session_state.current_formula_vars]
+             for var in vars_to_remove:
+                  del st.session_state.current_var_descriptions[var]
+
+             # Limpa os valores de variáveis ao mudar de indicador
+             st.session_state.current_variable_values = {}
+
+
         # Formulário para editar indicador
         with st.form(key=f"edit_form_{selected_indicator['id']}"):
             nome = st.text_input("Nome do Indicador", value=selected_indicator["nome"])
             objetivo = st.text_area("Objetivo", value=selected_indicator["objetivo"])
-            calculo = st.text_area("Fórmula de Cálculo", value=selected_indicator["calculo"])
-            meta = st.number_input("Meta", value=float(selected_indicator["meta"]), step=0.01)
+
+            # Campo para a fórmula (pré-preenchido com o valor existente)
+            formula = st.text_input(
+                "Fórmula de Cálculo (Use letras para variáveis, ex: A+B/C)",
+                value=selected_indicator.get("formula", ""), # Carrega a fórmula existente
+                placeholder="Ex: (DEMISSOES / TOTAL_FUNCIONARIOS) * 100",
+                key=f"edit_formula_input_{selected_indicator['id']}" # Chave única
+            )
+
+            # Detectar variáveis na fórmula ATUAL do input para exibição dos campos de descrição
+            current_detected_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', formula))))
+
+            # Atualizar estado da sessão se a fórmula mudou no input
+            if st.session_state.current_formula_vars != current_detected_vars:
+                 st.session_state.current_formula_vars = current_detected_vars
+                 # Tentar manter descrições existentes para variáveis que ainda existem
+                 new_var_descriptions = {}
+                 for var in current_detected_vars:
+                      new_var_descriptions[var] = st.session_state.current_var_descriptions.get(var, "")
+                 st.session_state.current_var_descriptions = new_var_descriptions
+                 # st.experimental_rerun() # Pode ser necessário um rerun aqui para atualizar os inputs de descrição
+
+
+            # Campos para definir a descrição das variáveis (aparecem após a fórmula ser inserida e variáveis detectadas)
+            st.markdown("---")
+            st.subheader("Definição das Variáveis na Fórmula")
+
+            if st.session_state.current_formula_vars:
+                st.info(f"Variáveis detectadas na fórmula: {', '.join(st.session_state.current_formula_vars)}")
+                st.write("Defina a descrição para cada variável:")
+
+                # Usar colunas para organizar os inputs de descrição
+                cols = st.columns(min(3, len(st.session_state.current_formula_vars)))
+                new_var_descriptions = {}
+                for i, var in enumerate(st.session_state.current_formula_vars):
+                    col_idx = i % len(cols)
+                    with cols[col_idx]:
+                        # Usar a descrição existente do estado da sessão
+                        new_var_descriptions[var] = st.text_input(
+                            f"Descrição para '{var}'",
+                            value=st.session_state.current_var_descriptions.get(var, ""),
+                            placeholder=f"Ex: {var} - Número de Atendimentos",
+                            key=f"desc_input_{var}_edit_{selected_indicator['id']}" # Chave única
+                        )
+                # Atualiza o estado da sessão com as descrições preenchidas
+                st.session_state.current_var_descriptions = new_var_descriptions
+
+            else:
+                st.warning("Nenhuma variável (letras) encontrada na fórmula. O resultado será um valor fixo.")
+                st.session_state.current_var_descriptions = {}
+
+
+            # Outros campos do indicador
+            st.markdown("---")
+            # O campo meta agora é opcional se houver fórmula com variáveis
+            meta = st.number_input("Meta", value=float(selected_indicator.get("meta", 0.0)), step=0.01, format="%.4f")
+
             comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"],
-                                      index=0 if selected_indicator["comparacao"] == "Maior é melhor" else 1)
+                                      index=0 if selected_indicator.get("comparacao", "Maior é melhor") == "Maior é melhor" else 1)
             tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS,
-                                        index=TIPOS_GRAFICOS.index(selected_indicator["tipo_grafico"]))
+                                        index=TIPOS_GRAFICOS.index(selected_indicator.get("tipo_grafico", "Linha")) if selected_indicator.get("tipo_grafico", "Linha") in TIPOS_GRAFICOS else 0)
             responsavel = st.selectbox("Setor Responsável", SETORES,
-                                       index=SETORES.index(selected_indicator["responsavel"]))
+                                       index=SETORES.index(selected_indicator.get("responsavel", SETORES[0])) if selected_indicator.get("responsavel", SETORES[0]) in SETORES else 0)
 
             # Criar colunas para os botões
-            col1, col2, col3 = st.columns([1, 3, 1])  # Ajuste das proporções
+            col1, col2, col3 = st.columns([1, 3, 1])
 
             # Aplicar estilo para alinhar o botão "Excluir" à direita na coluna 3
             st.markdown(
@@ -951,25 +1165,47 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
             )
 
             with col1:
-                submitted = st.form_submit_button("💾 Salvar")
+                submit = st.form_submit_button("💾 Salvar")
             with col3:
-                delete = st.form_submit_button("🗑️ Excluir", type="secondary")
+                # Usar uma chave única para o botão de exclusão
+                delete = st.form_submit_button("🗑️ Excluir", type="secondary", key=f"delete_btn_{selected_indicator['id']}")
                 if delete:
                     st.session_state[f"deleting_indicator_{selected_indicator['id']}"] = True
 
+
             if submitted:
-                if nome and objetivo and calculo and meta:
+                # Validar a fórmula antes de salvar
+                if formula:
+                    try:
+                        # Tenta parsear a fórmula para verificar a sintaxe básica
+                        var_symbols = symbols(st.session_state.current_formula_vars)
+                        sympify(formula, locals=dict(zip(st.session_state.current_formula_vars, var_symbols)))
+                    except SympifyError as e:
+                        st.error(f"❌ Erro na sintaxe da fórmula: {e}")
+                        return
+                    except Exception as e:
+                        st.error(f"❌ Erro inesperado ao validar a fórmula: {e}")
+                        return
+
+                # Validar se todas as variáveis detectadas têm descrição (opcional)
+                # if st.session_state.current_formula_vars and any(desc.strip() == "" for desc in st.session_state.current_var_descriptions.values()):
+                #      st.error("❌ Por favor, defina a descrição para todas as variáveis detectadas.")
+                #      return
+
+                # Validar campos obrigatórios (Nome, Objetivo, Fórmula)
+                if nome and objetivo and formula:
                     # Verificar se o nome foi alterado e se já existe outro indicador com esse nome
                     if nome != selected_indicator["nome"] and any(
                             ind["nome"] == nome for ind in indicators if ind["id"] != selected_indicator["id"]):
-                        st.error(f"Já existe um indicador com o nome '{nome}'.")
+                        st.error(f"❌ Já existe um indicador com o nome '{nome}'.")
                     else:
                         # Atualizar indicador
                         for ind in indicators:
                             if ind["id"] == selected_indicator["id"]:
                                 ind["nome"] = nome
                                 ind["objetivo"] = objetivo
-                                ind["calculo"] = calculo
+                                ind["formula"] = formula # Salva a fórmula editada
+                                ind["variaveis"] = st.session_state.current_var_descriptions # Salva as descrições editadas
                                 ind["meta"] = meta
                                 ind["comparacao"] = comparacao
                                 ind["tipo_grafico"] = tipo_grafico
@@ -979,12 +1215,19 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
                         # Salvar alterações
                         save_indicators(indicators, INDICATORS_FILE)
                         st.session_state["indicators"] = load_indicators(INDICATORS_FILE)  # Recarrega os indicadores
-                        st.success(f"Indicador '{nome}' atualizado com sucesso!")
-                        st.rerun()
-                else:
-                    st.warning("Todos os campos são obrigatórios.")
+                        st.success(f"✅ Indicador '{nome}' atualizado com sucesso!")
 
-        # Bloco para exclusão
+                        # Limpar estado da sessão relacionado à edição após salvar
+                        st.session_state.editing_indicator_id = None
+                        st.session_state.current_formula_vars = []
+                        st.session_state.current_var_descriptions = {}
+                        st.session_state.current_variable_values = {} # Limpa também os valores de variáveis
+
+                        st.rerun() # Recarrega a página para atualizar a lista ou mostrar o indicador editado
+                else:
+                    st.warning("⚠️ Por favor, preencha todos os campos obrigatórios (Nome, Objetivo, Fórmula).")
+
+        # Bloco para exclusão (mantido como estava)
         if st.session_state.get(f"deleting_indicator_{selected_indicator['id']}", False):
             st.warning(f"Tem certeza que deseja excluir o indicador '{selected_indicator['nome']}'?")
             col1, col2 = st.columns(2)
@@ -1001,9 +1244,14 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
                     st.session_state["indicators"] = indicators
                     save_indicators(indicators, INDICATORS_FILE)
 
-                     # Limpar estado de exclusão
+                     # Limpar estado de exclusão e edição
                     if f"deleting_indicator_{selected_indicator['id']}" in st.session_state:
                         del st.session_state[f"deleting_indicator_{selected_indicator['id']}"]
+                    st.session_state.editing_indicator_id = None
+                    st.session_state.current_formula_vars = []
+                    st.session_state.current_var_descriptions = {}
+                    st.session_state.current_variable_values = {} # Limpa também os valores de variáveis
+
 
                     # Recarrega a página para atualizar a lista
                     st.rerun()
@@ -1039,7 +1287,7 @@ def display_result_with_delete(result, selected_indicator, RESULTS_FILE, USER_LO
         st.warning("Data de referência ausente. Impossível excluir este resultado.")
 
 def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG_FILE, USERS_FILE):
-    """Mostra a página de preenchimento de indicador."""
+    """Mostra a página de preenchimento de indicador com calculadora dinâmica."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
     st.header("Preencher Indicador")
 
@@ -1055,14 +1303,14 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
     user_type = st.session_state.user_type
     user_sector = st.session_state.user_sector
     # Nome do usuário para registro em log
-    user_name = st.session_state.get("user_name", "Usuário não identificado")
+    user_name = st.session_state.get("username", "Usuário não identificado") # Usar username da sessão
 
     if user_type == "Operador":
         indicators = [ind for ind in indicators if ind["responsavel"] == user_sector]
         if not indicators:
             st.info(f"Não há indicadores associados ao seu setor ({user_sector}).")
             st.markdown('</div>', unsafe_allow_html=True)
-        return
+            return
 
     # Selecionar indicador para preencher
     indicator_names = [ind["nome"] for ind in indicators]
@@ -1074,11 +1322,31 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"**Objetivo:** {selected_indicator['objetivo']}")
-            st.markdown(f"**Fórmula de Cálculo:** {selected_indicator['calculo']}")
+            # Mostrar a fórmula se existir
+            if selected_indicator.get("formula"):
+                 st.markdown(f"**Fórmula de Cálculo:** `{selected_indicator['formula']}`")
+            else:
+                 st.markdown(f"**Fórmula de Cálculo:** Não definida (preenchimento direto)")
+
         with col2:
             st.markdown(f"**Meta:** {selected_indicator['meta']}")
             st.markdown(f"**Comparação:** {selected_indicator['comparacao']}")
             st.markdown(f"**Setor Responsável:** {selected_indicator['responsavel']}")
+
+        # Mostrar descrições das variáveis se existirem
+        if selected_indicator.get("variaveis"):
+             st.markdown("---")
+             st.subheader("Variáveis do Indicador")
+             # Exibir variáveis e suas descrições em colunas
+             vars_list = list(selected_indicator["variaveis"].items())
+             if vars_list:
+                 cols = st.columns(min(3, len(vars_list)))
+                 for i, (var, desc) in enumerate(vars_list):
+                     col_idx = i % len(cols)
+                     with cols[col_idx]:
+                         st.markdown(f"**{var}:** {desc or 'Sem descrição'}")
+
+
         st.markdown("---")
 
         # Carregar resultados existentes para verificar meses já preenchidos
@@ -1090,23 +1358,25 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
         for result in indicator_results:
             if "data_referencia" in result:
                 try:
-                    date_ref = pd.to_datetime(result["data_referencia"].split('T')[0])
-                    filled_periods.add((date_ref.month, date_ref.year))
+                    # Normaliza a data de referência para comparação (apenas ano e mês)
+                    date_ref = pd.to_datetime(result["data_referencia"]).to_period('M')
+                    filled_periods.add(date_ref)
                 except:
-                    pass
+                    pass # Ignora resultados com data inválida
 
         # Verificar se há períodos disponíveis para preenchimento
-        current_year = datetime.now().year
+        current_date = datetime.now()
         available_periods = []
 
         # Considerar os últimos 5 anos para possíveis preenchimentos
-        for year in range(current_year - 5, current_year + 1):
+        for year in range(current_date.year - 5, current_date.year + 1):
             for month in range(1, 13):
+                period = pd.Period(year=year, month=month, freq='M')
                 # Não permitir preenchimento de meses futuros
-                if year == current_year and month > datetime.now().month:
+                if period > pd.Period(current_date, freq='M'):
                     continue
-                if (month, year) not in filled_periods:
-                    available_periods.append((month, year))
+                if period not in filled_periods:
+                    available_periods.append(period)
 
         if not available_periods:
             st.info("Todos os períodos relevantes já foram preenchidos para este indicador.")
@@ -1114,61 +1384,189 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
             st.subheader("Adicionar Novo Resultado")
             with st.form("adicionar_resultado"):
                 # Ordenar períodos disponíveis (mais recentes primeiro)
-                available_periods.sort(key=lambda x: (x[1], x[0]), reverse=True)
+                available_periods.sort(reverse=True)
 
                 # Criar opções para o selectbox
-                period_options = [f"{datetime(year, month, 1).strftime('%B/%Y')}" for month, year in available_periods]
-                selected_period = st.selectbox("Selecione o período para preenchimento:", period_options)
+                period_options = [f"{p.strftime('%B/%Y')}" for p in available_periods]
+                selected_period_str = st.selectbox("Selecione o período para preenchimento:", period_options)
+
+                # Encontrar o objeto Period selecionado
+                selected_period = next((p for p in available_periods if p.strftime('%B/%Y') == selected_period_str), None)
 
                 # Extrair mês e ano do período selecionado
-                selected_month, selected_year = None, None
-                for i, period_str in enumerate(period_options):
-                    if period_str == selected_period:
-                        selected_month, selected_year = available_periods[i]
-                        break
+                selected_month, selected_year = selected_period.month, selected_period.year if selected_period else (None, None)
 
-                resultado = st.number_input("Resultado", step=0.01)
+                # --- Lógica da Calculadora Dinâmica ---
+                calculated_result = None # Variável para armazenar o resultado calculado
+
+                # Verificar se o indicador tem fórmula e variáveis
+                if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
+                    st.markdown("#### Valores das Variáveis")
+                    st.info(f"Insira os valores para calcular o resultado usando a fórmula: `{selected_indicator['formula']}`")
+
+                    # Usar colunas para organizar os inputs das variáveis
+                    vars_to_fill = list(selected_indicator["variaveis"].items())
+                    if vars_to_fill:
+                        cols = st.columns(min(3, len(vars_to_fill)))
+                        # Limpa os valores de variáveis no estado da sessão ao mudar de período ou indicador
+                        # if st.session_state.get('last_selected_period_fill') != selected_period_str or st.session_state.get('last_selected_indicator_fill') != selected_indicator['id']:
+                        #      st.session_state.current_variable_values = {}
+                        #      st.session_state.last_selected_period_fill = selected_period_str
+                        #      st.session_state.last_selected_indicator_fill = selected_indicator['id']
+
+                        # Inicializa ou carrega valores existentes para o período selecionado (se houver edição)
+                        # Esta lógica é mais complexa se permitirmos editar resultados antigos.
+                        # Para simplificar, vamos focar em adicionar novos resultados.
+                        # Limpa os valores no estado da sessão sempre que o formulário é exibido para um novo preenchimento.
+                        # st.session_state.current_variable_values = {} # Isso limparia a cada rerun, não é ideal.
+                        # Vamos usar uma chave única para o formulário para manter os valores durante o preenchimento.
+
+                        # Usar uma chave única para os inputs de variável dentro do formulário
+                        variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"
+                        if variable_values_key not in st.session_state:
+                             st.session_state[variable_values_key] = {}
+
+                        # Criar inputs para cada variável
+                        for i, (var, desc) in enumerate(vars_to_fill):
+                            col_idx = i % len(cols)
+                            with cols[col_idx]:
+                                # Usar o valor do estado da sessão se existir, caso contrário, 0.0
+                                default_value = st.session_state[variable_values_key].get(var, 0.0)
+                                st.session_state[variable_values_key][var] = st.number_input(
+                                    f"{var} ({desc or 'Sem descrição'})",
+                                    value=float(default_value), # Garantir que o valor inicial é float
+                                    step=0.01, # Ajuste o passo conforme a necessidade
+                                    format="%.4f", # Ajuste o formato conforme a necessidade
+                                    key=f"var_input_{var}_{selected_indicator['id']}_{selected_period_str}" # Chave única para o input
+                                )
+
+                        # Botão para calcular o resultado
+                        if st.form_submit_button("✨ Calcular Resultado"):
+                            # Obter os valores das variáveis do estado da sessão
+                            variable_values = st.session_state.get(variable_values_key, {})
+                            formula_str = selected_indicator["formula"]
+
+                            try:
+                                # Criar objetos simbólicos para as variáveis
+                                var_symbols = symbols(variable_values.keys())
+                                # Parsear a fórmula
+                                expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
+
+                                # Substituir os símbolos pelos valores numéricos
+                                # Garantir que os valores são numéricos antes de substituir
+                                subs_dict = {symbols(var): float(value) for var, value in variable_values.items()}
+                                calculated_result = float(expr.subs(subs_dict))
+
+                                # Armazenar o resultado calculado no estado da sessão
+                                st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = calculated_result
+                                st.success(f"Resultado calculado: **{calculated_result:.4f}**") # Exibe o resultado formatado
+
+                            except SympifyError as e:
+                                st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
+                                st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa resultado calculado
+                            except ZeroDivisionError:
+                                st.error("❌ Erro ao calcular a fórmula: Divisão por zero.")
+                                st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa resultado calculado
+                            except Exception as e:
+                                st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                                st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa resultado calculado
+
+                        # Exibir o resultado calculado se estiver no estado da sessão
+                        if st.session_state.get(f"calculated_result_{selected_indicator['id']}_{selected_period_str}") is not None:
+                             calculated_result = st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"]
+                             st.markdown(f"**Resultado Calculado:** **{calculated_result:.4f}**") # Exibe novamente se já calculado
+
+                        # O campo 'resultado' direto não é exibido se houver fórmula
+                        resultado_input_value = None # Não usamos o input direto
+
+                    else:
+                         st.warning("O indicador tem uma fórmula, mas nenhuma variável definida. O resultado será um valor fixo.")
+                         # Se não tem variáveis, volta para o input direto de resultado
+                         resultado_input_value = st.number_input("Resultado", step=0.01, format="%.4f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
+                         st.session_state[variable_values_key] = {} # Garante que valores_variaveis está vazio
+                         st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Garante que resultado calculado está vazio
+
+
+                else:
+                    # Indicador sem fórmula, usa preenchimento direto do resultado
+                    resultado_input_value = st.number_input("Resultado", step=0.01, format="%.4f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
+                    st.session_state[variable_values_key] = {} # Garante que valores_variaveis está vazio
+                    st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Garante que resultado calculado está vazio
+
+
+                # Campos de Observações e Análise Crítica (mantidos)
                 observacoes = st.text_area("Observações (opcional)",
-                                           placeholder="Adicione informações relevantes sobre este resultado")
+                                           placeholder="Adicione informações relevantes sobre este resultado",
+                                           key=f"obs_input_{selected_indicator['id']}_{selected_period_str}")
                 # Análise Crítica 5W2H
                 st.markdown("### Análise Crítica (5W2H)")
                 st.markdown("""
                 <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
                     <p style="margin: 0; font-size: 14px;">
-                        A metodologia 5W2H ajuda a estruturar a análise crítica de forma completa, 
+                        A metodologia 5W2H ajuda a estruturar a análise crítica de forma completa,
                         abordando todos os aspectos relevantes da situação.
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
                 what = st.text_area("O que (What)",
-                                    placeholder="O que está acontecendo? Qual é a situação atual do indicador?")
+                                    placeholder="O que está acontecendo? Qual é a situação atual do indicador?",
+                                    key=f"what_input_{selected_indicator['id']}_{selected_period_str}")
                 why = st.text_area("Por que (Why)",
-                                   placeholder="Por que isso está acontecendo? Quais são as causas?")
+                                   placeholder="Por que isso está acontecendo? Quais são as causas?",
+                                   key=f"why_input_{selected_indicator['id']}_{selected_period_str}")
                 who = st.text_area("Quem (Who)",
-                                    placeholder="Quem é responsável? Quem está envolvido?")
+                                    placeholder="Quem é responsável? Quem está envolvido?",
+                                    key=f"who_input_{selected_indicator['id']}_{selected_period_str}")
                 when = st.text_area("Quando (When)",
-                                    placeholder="Quando isso aconteceu? Qual é o prazo para resolução?")
+                                    placeholder="Quando isso aconteceu? Qual é o prazo para resolução?",
+                                    key=f"when_input_{selected_indicator['id']}_{selected_period_str}")
                 where = st.text_area("Onde (Where)",
-                                     placeholder="Onde ocorre a situação? Em qual processo ou área?")
+                                     placeholder="Onde ocorre a situação? Em qual processo ou área?",
+                                     key=f"where_input_{selected_indicator['id']}_{selected_period_str}")
                 how = st.text_area("Como (How)",
-                                   placeholder="Como resolver a situação? Quais ações devem ser tomadas?")
+                                   placeholder="Como resolver a situação? Quais ações devem ser tomadas?",
+                                   key=f"how_input_{selected_indicator['id']}_{selected_period_str}")
                 howMuch = st.text_area("Quanto custa (How Much)",
-                                       placeholder="Quanto custará implementar a solução? Quais recursos são necessários?")
+                                       placeholder="Quanto custará implementar a solução? Quais recursos são necessários?",
+                                       key=f"howmuch_input_{selected_indicator['id']}_{selected_period_str}")
+
+                # Botão Salvar
                 submitted = st.form_submit_button("✔️ Salvar")
 
-            if submitted and selected_month and selected_year:
-                if resultado is not None:
-                    data_referencia = datetime(selected_year, selected_month, 1).isoformat()
+            # Lógica de salvamento
+            if submitted and selected_period:
+                final_result_to_save = None
+                values_to_save = {}
+
+                # Determinar qual resultado salvar (calculado ou direto)
+                if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
+                    # Se tem fórmula, tenta usar o resultado calculado do estado da sessão
+                    final_result_to_save = st.session_state.get(f"calculated_result_{selected_indicator['id']}_{selected_period_str}")
+                    values_to_save = st.session_state.get(variable_values_key, {}) # Salva os valores das variáveis
+
+                    if final_result_to_save is None:
+                         st.warning("⚠️ Por favor, calcule o resultado antes de salvar.")
+                         return # Impede o salvamento se o resultado calculado não existir
+                else:
+                    # Se não tem fórmula, usa o valor do input direto
+                    final_result_to_save = resultado_input_value
+                    values_to_save = {} # Não há valores de variáveis para salvar
+
+                # Validar se há um resultado para salvar
+                if final_result_to_save is not None:
+                    # Formatar a data de referência para ISO 8601
+                    data_referencia_iso = datetime(selected_year, selected_month, 1).isoformat()
+
                     analise_critica = {
                         "what": what, "why": why, "who": who, "when": when,
                         "where": where, "how": how, "howMuch": howMuch
                     }
 
                     # Verificar o status de preenchimento da análise crítica
-                    campos_preenchidos = sum(1 for campo in analise_critica.values() if campo.strip())
-                    total_campos = len(analise_critica)
+                    campos_preenchidos = sum(1 for campo in analise_critica.values() if campo and campo.strip()) # Verifica se o campo não é None e não está vazio/só espaços
+                    total_campos = 7 # 5W2H
 
-                    if campos_preenchidos == 0:
+                    if campos_preenchidos == 0
                         status_analise = "❌ Não preenchida"
                     elif campos_preenchidos == total_campos:
                         status_analise = "✅ Preenchida completamente"
@@ -1183,17 +1581,18 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                     # Verificar se já existe um resultado para este período (não deveria, mas por segurança)
                     existing_result = next(
                         (r for r in results
-                         if r["indicator_id"] == selected_indicator["id"] and r["data_referencia"] == data_referencia),
+                         if r["indicator_id"] == selected_indicator["id"] and r["data_referencia"] == data_referencia_iso),
                         None)
 
                     if existing_result:
                         st.warning(
-                            f"Já existe um resultado para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}. Este período não deveria estar disponível para preenchimento.")
+                            f"⚠️ Já existe um resultado para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}. Este período não deveria estar disponível para preenchimento.")
                     else:
                         new_result = {
                             "indicator_id": selected_indicator["id"],
-                            "data_referencia": data_referencia,
-                            "resultado": resultado,
+                            "data_referencia": data_referencia_iso,
+                            "resultado": final_result_to_save, # Salva o resultado (calculado ou direto)
+                            "valores_variaveis": values_to_save, # Salva os valores das variáveis (vazio se preenchimento direto)
                             "observacao": observacoes,
                             "analise_critica": analise_critica_json,
                             "data_criacao": datetime.now().isoformat(),
@@ -1204,33 +1603,117 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                         results.append(new_result)
                         save_results(results, RESULTS_FILE)
                         st.success(
-                            f"Resultado adicionado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
-                        # Recarregar a página para atualizar a lista de períodos disponíveis
-                        st.rerun()
+                            f"✅ Resultado adicionado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
+
+                        # Limpar estados da sessão relacionados ao preenchimento após salvar
+                        st.session_state.current_variable_values = {} # Limpa os valores das variáveis
+                        st.session_state[variable_values_key] = {} # Limpa a chave específica do formulário
+                        st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa o resultado calculado
+
+                        st.rerun() # Recarrega a página para atualizar a lista de períodos disponíveis
                 else:
-                    st.warning("Por favor, informe o resultado.")
+                    st.warning("⚠️ Por favor, informe o resultado ou calcule-o antes de salvar.")
 
         # Exibir resultados anteriores
         st.subheader("Resultados Anteriores")
         if indicator_results:
-            # Exibir cabeçalho da tabela
-            col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
-            with col1:
-                st.markdown("**Período**")
-            with col2:
-                st.markdown("**Resultado**")
-            with col3:
-                st.markdown("**Observações**")
-            with col4:
-                st.markdown("**Análise Crítica**")
-            with col5:
-                st.markdown("**Data de Atualização**")
-            with col6:
-                st.markdown("**Ações**")
+            # Ordenar resultados por data (mais recente primeiro)
+            indicator_results_sorted = sorted(indicator_results, key=lambda x: x.get("data_referencia", ""), reverse=True)
 
-            # Iterar sobre os resultados e exibir cada um com a opção de excluir
-            for result in indicator_results:
-                display_result_with_delete(result, selected_indicator, RESULTS_FILE, USER_LOG_FILE)
+            # Exibir cabeçalho da tabela
+            # Ajustar colunas para incluir valores das variáveis ou não
+            if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
+                 # Se tem fórmula, mostra colunas para variáveis e resultado
+                 cols_header = st.columns([1.5] + [1] * len(selected_indicator["variaveis"]) + [1, 2, 2, 1]) # Data + Variáveis + Resultado + Obs + Análise + Ações
+                 with cols_header[0]: st.markdown("**Período**")
+                 for i, var in enumerate(selected_indicator["variaveis"].keys()):
+                      with cols_header[i+1]: st.markdown(f"**{var}**")
+                 with cols_header[len(selected_indicator["variaveis"])+1]: st.markdown("**Resultado**")
+                 with cols_header[len(selected_indicator["variaveis"])+2]: st.markdown("**Observações**")
+                 with cols_header[len(selected_indicator["variaveis"])+3]: st.markdown("**Análise Crítica**")
+                 with cols_header[len(selected_indicator["variaveis"])+4]: st.markdown("**Ações**")
+
+                 # Iterar sobre os resultados e exibir cada um
+                 for result in indicator_results_sorted:
+                      cols_data = st.columns([1.5] + [1] * len(selected_indicator["variaveis"]) + [1, 2, 2, 1])
+                      data_referencia = result.get('data_referencia')
+                      if data_referencia:
+                           with cols_data[0]: st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
+                           # Exibir valores das variáveis
+                           valores_vars = result.get("valores_variaveis", {})
+                           for i, var in enumerate(selected_indicator["variaveis"].keys()):
+                                with cols_data[i+1]: st.write(valores_vars.get(var, 'N/A')) # Exibe o valor da variável ou N/A
+                           with cols_data[len(selected_indicator["variaveis"])+1]: st.write(result.get('resultado', 'N/A'))
+                           with cols_data[len(selected_indicator["variaveis"])+2]: st.write(result.get('observacao', 'N/A'))
+                           with cols_data[len(selected_indicator["variaveis"])+3]:
+                                # Exibir status da análise crítica e expandir para ver detalhes
+                                analise_critica_json = result.get('analise_critica', '{}')
+                                status_analise = get_analise_status(analise_critica_json)
+                                st.write(status_analise)
+                                try:
+                                     analise_dict = json.loads(analise_critica_json)
+                                     if any(analise_dict.get(key, "").strip() for key in ["what", "why", "who", "when", "where", "how", "howMuch"]):
+                                          with st.expander("Ver Análise"):
+                                               st.markdown("**O que:** " + analise_dict.get("what", ""))
+                                               st.markdown("**Por que:** " + analise_dict.get("why", ""))
+                                               st.markdown("**Quem:** " + analise_dict.get("who", ""))
+                                               st.markdown("**Quando:** " + analise_dict.get("when", ""))
+                                               st.markdown("**Onde:** " + analise_dict.get("where", ""))
+                                               st.markdown("**Como:** " + analise_dict.get("how", ""))
+                                               st.markdown("**Quanto custa:** " + analise_dict.get("howMuch", ""))
+                                except:
+                                     st.write("Erro ao carregar análise.")
+
+                           with cols_data[len(selected_indicator["variaveis"])+4]:
+                                if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}"):
+                                    delete_result(selected_indicator['id'], data_referencia, RESULTS_FILE, USER_LOG_FILE)
+                      else:
+                           st.warning("Resultado com data de referência ausente. Impossível exibir/excluir.")
+
+            else:
+                 # Se não tem fórmula, mostra colunas padrão
+                 col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
+                 with col1: st.markdown("**Período**")
+                 with col2: st.markdown("**Resultado**")
+                 with col3: st.markdown("**Observações**")
+                 with col4: st.markdown("**Análise Crítica**")
+                 with col5: st.markdown("**Data de Atualização**")
+                 with col6: st.markdown("**Ações**")
+
+                 # Iterar sobre os resultados e exibir cada um
+                 for result in indicator_results_sorted:
+                      data_referencia = result.get('data_referencia')
+                      if data_referencia:
+                           col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
+                           with col1: st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
+                           with col2: st.write(result.get('resultado', 'N/A'))
+                           with col3: st.write(result.get('observacao', 'N/A'))
+                           with col4:
+                                # Exibir status da análise crítica e expandir para ver detalhes
+                                analise_critica_json = result.get('analise_critica', '{}')
+                                status_analise = get_analise_status(analise_critica_json)
+                                st.write(status_analise)
+                                try:
+                                     analise_dict = json.loads(analise_critica_json)
+                                     if any(analise_dict.get(key, "").strip() for key in ["what", "why", "who", "when", "where", "how", "howMuch"]):
+                                          with st.expander("Ver Análise"):
+                                               st.markdown("**O que:** " + analise_dict.get("what", ""))
+                                               st.markdown("**Por que:** " + analise_dict.get("why", ""))
+                                               st.markdown("**Quem:** " + analise_dict.get("who", ""))
+                                               st.markdown("**Quando:** " + analise_dict.get("when", ""))
+                                               st.markdown("**Onde:** " + analise_dict.get("where", ""))
+                                               st.markdown("**Como:** " + analise_dict.get("how", ""))
+                                               st.markdown("**Quanto custa:** " + analise_dict.get("howMuch", ""))
+                                except:
+                                     st.write("Erro ao carregar análise.")
+
+                           with col5: st.write(pd.to_datetime(result.get('data_atualizacao')).strftime("%d/%m/%Y %H:%M") if result.get('data_atualizacao') else 'N/A')
+                           with col6:
+                                if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}"):
+                                    delete_result(selected_indicator['id'], data_referencia, RESULTS_FILE, USER_LOG_FILE)
+                      else:
+                           st.warning("Resultado com data de referência ausente. Impossível exibir/excluir.")
+
 
         else:
             st.info("Nenhum resultado registrado para este indicador.")
@@ -1241,38 +1724,36 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
         all_results = load_results(RESULTS_FILE)
         log_results = [r for r in all_results if r["indicator_id"] == selected_indicator["id"]]
         log_results = sorted(log_results, key=lambda x: x.get("data_atualizacao", ""), reverse=True)
-        if log_results:
-            log_df = pd.DataFrame(log_results)
-            # Aplica a função format_date para garantir formatação consistente
-            log_df["Data do Preenchimento"] = [
-                format_date_as_month_year(r.get("data_atualizacao", r.get("data_criacao", datetime.now().isoformat())))
-                for r in log_results]
-            log_df["Valor Preenchido"] = log_df["resultado"]
-            if "usuario" in log_df.columns:
-                log_df["Usuário"] = log_df["usuario"]
-            else:
-                log_df["Usuário"] = user_name
-            log_df["Período"] = pd.to_datetime(log_df["data_referencia"]).dt.strftime("%B/%Y")
 
-            # Adicionar status da análise crítica ao log
-            if "status_analise" in log_df.columns:
-                log_df["Status Análise Crítica"] = log_df["status_analise"]
-            else:
-                # Verificar o status da análise crítica para cada resultado
-                log_df["Status Análise Crítica"] = log_df["analise_critica"].apply(get_analise_status)
-
-            exibir_log = log_df[
-                ["Período", "Valor Preenchido", "Usuário", "Status Análise Crítica", "Data do Preenchimento"]]
-            exibir_log = exibir_log.drop_duplicates(subset=["Período", "Valor Preenchido", "Usuário"], keep='first')
-        else:
-            exibir_log = pd.DataFrame(
-                columns=["Período", "Valor Preenchido", "Usuário", "Status Análise Crítica", "Data do Preenchimento"]
-            )
         with st.expander("📜 Log de Preenchimentos (clique para visualizar)", expanded=False):
-            if exibir_log.empty:
-                st.info("Nenhum registro de preenchimento encontrado para este indicador.")
+            if log_results:
+                log_data_list = []
+                for r in log_results:
+                     log_entry = {
+                          "Período": pd.to_datetime(r.get("data_referencia")).strftime("%B/%Y") if r.get("data_referencia") else "N/A",
+                          "Resultado Salvo": r.get("resultado", "N/A"),
+                          "Usuário": r.get("usuario", "System"),
+                          "Status Análise Crítica": r.get("status_analise", get_analise_status(r.get("analise_critica", "{}"))),
+                          "Data/Hora Preenchimento": pd.to_datetime(r.get("data_atualizacao", r.get("data_criacao", datetime.now().isoformat()))).strftime("%d/%m/%Y %H:%M")
+                     }
+                     # Adicionar valores das variáveis ao log se existirem
+                     valores_vars = r.get("valores_variaveis", {})
+                     if valores_vars:
+                          log_entry["Valores Variáveis"] = ", ".join([f"{v}={val}" for v, val in valores_vars.items()])
+                     else:
+                          log_entry["Valores Variáveis"] = "N/A"
+
+                     log_data_list.append(log_entry)
+
+                log_df = pd.DataFrame(log_data_list)
+                # Reordenar colunas para melhor visualização
+                cols_order = ["Período", "Resultado Salvo", "Valores Variáveis", "Usuário", "Status Análise Crítica", "Data/Hora Preenchimento"]
+                log_df = log_df[cols_order]
+
+                st.dataframe(log_df, use_container_width=True)
             else:
-                st.dataframe(exibir_log, use_container_width=True)
+                st.info("Nenhum registro de preenchimento encontrado para este indicador.")
+
 
     st.markdown('</div>', unsafe_allow_html=True)
 
