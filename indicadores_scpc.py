@@ -879,6 +879,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     form_key = "create_indicator_form"
 
     # Inicializar estado do formulário (para valores finais de submissão)
+    # Este dicionário será preenchido pelo Streamlit após a submissão do formulário
+    # e usado para definir os valores iniciais dos widgets na próxima execução.
     if form_key not in st.session_state:
         st.session_state[form_key] = {
             'nome': '',
@@ -889,9 +891,11 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             'comparacao': 'Maior é melhor',
             'tipo_grafico': TIPOS_GRAFICOS[0],
             'responsavel': SETORES[0],
+            # Não inclua estados dinâmicos (vars, descriptions, test_result) aqui
         }
 
     # Inicializar estado para variáveis dinâmicas (fora do dicionário do formulário)
+    # Estes estados são atualizados dinamicamente conforme o usuário digita a fórmula.
     if 'create_current_formula_vars' not in st.session_state:
         st.session_state.create_current_formula_vars = []
     if 'create_current_var_descriptions' not in st.session_state:
@@ -905,7 +909,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
     # --- Lógica para atualizar variáveis dinâmicas baseada no input da fórmula (ANTES do formulário) ---
     # Acessa o valor atual do input 'formula' através da chave do widget no session_state
-    # Usa .get() com valor padrão para evitar erro na primeira execução
+    # Usa .get() com valor padrão para evitar erro na primeira execução antes do widget existir
     current_formula_input_value = st.session_state.get(f"{form_key}_formula", "")
 
     # Detectar variáveis automaticamente sempre que a fórmula muda no input
@@ -929,11 +933,13 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
 
     # Carregar valores iniciais do estado da sessão para pré-preencher os inputs do formulário
+    # Estes são os valores que o formulário terá *antes* de qualquer interação do usuário nesta execução.
     initial_form_state = st.session_state[form_key]
 
     # Formulário para criar indicador
     with st.form(key=form_key):
         # Inputs do formulário - Usam chaves únicas e valores iniciais do estado do formulário
+        # O Streamlit gerencia a escrita desses valores em st.session_state[form_key] após a submissão.
         nome = st.text_input("Nome do Indicador", value=initial_form_state['nome'], key=f"{form_key}_nome")
         objetivo = st.text_area("Objetivo", value=initial_form_state['objetivo'], key=f"{form_key}_objetivo")
         unidade = st.text_input("Unidade do Resultado", value=initial_form_state['unidade'], placeholder="Ex: %", key=f"{form_key}_unidade")
@@ -949,6 +955,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         st.subheader("Variáveis da Fórmula e Teste")
 
         # Exibir campos de descrição e valor de teste baseados no estado dinâmico (atualizado ANTES do formulário)
+        # Estes inputs escrevem diretamente nos estados dinâmicos separados.
         if st.session_state.create_current_formula_vars:
             st.info(f"Variáveis detectadas na fórmula: {', '.join(st.session_state.create_current_formula_vars)}")
             st.write("Defina a descrição e insira valores de teste para cada variável:")
@@ -979,7 +986,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                      )
 
             # Botão para testar a fórmula (dentro do formulário)
-            test_button_clicked = st.form_submit_button("✨ Testar Fórmula")
+            # A chave do botão é usada para verificar se ele foi clicado após a submissão.
+            st.form_submit_button("✨ Testar Fórmula", key=f"{form_key}_test_button")
 
 
         else:
@@ -989,20 +997,16 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             st.session_state.create_current_var_descriptions = {}
             st.session_state.create_sample_values = {}
             st.session_state.create_test_result = None # Limpa resultado do teste
-            # Inicializa test_button_clicked como False se o bloco acima não for executado
-            test_button_clicked = False
 
 
         # Exibir o resultado do teste se estiver no estado da sessão dinâmico
         if st.session_state.create_test_result is not None:
-             # NOVO: Formatar resultado do teste para 2 casas decimais e adicionar unidade
              # Acessa a unidade do input do formulário via session_state
              current_unidade_input_value = st.session_state.get(f"{form_key}_unidade", "")
              st.markdown(f"**Resultado do Teste:** **{st.session_state.create_test_result:.2f}{current_unidade_input_value}**")
 
 
         # Outros campos do indicador - Usam chaves únicas e valores iniciais do estado do formulário
-        st.markdown("---")
         meta = st.number_input("Meta", value=float(initial_form_state['meta']), step=0.01, format="%.2f", key=f"{form_key}_meta")
         comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"],
                                   index=0 if initial_form_state['comparacao'] == "Maior é melhor" else 1, key=f"{form_key}_comparacao")
@@ -1012,12 +1016,14 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                                    index=SETORES.index(initial_form_state['responsavel']) if initial_form_state['responsavel'] in SETORES else 0, key=f"{form_key}_responsavel")
 
         # Botão principal de criação (dentro do formulário)
-        submitted_create = st.form_submit_button("➕ Criar")
+        # A chave do botão é usada para verificar se ele foi clicado após a submissão.
+        st.form_submit_button("➕ Criar", key=f"{form_key}_create_button")
 
         # --- Lógica para lidar com os botões de submissão (FORA do formulário) ---
     # Acessa os valores dos botões submetidos através das chaves do formulário no session_state
-    test_button_clicked = st.session_state.get(f"{form_key}_test_button", False) # Acessa o estado do botão de teste
-    submitted_create = st.session_state.get(f"{form_key}_create_button", False) # Acessa o estado do botão de criar
+    # Estes valores são True apenas na execução imediatamente após o clique no botão.
+    test_button_clicked = st.session_state.get(f"{form_key}_test_button", False)
+    submitted_create = st.session_state.get(f"{form_key}_create_button", False)
 
     # Nota: Os valores dos inputs do formulário (nome, objetivo, formula, etc.)
     # são acessados diretamente via st.session_state[chave_do_input] após a submissão.
@@ -1154,13 +1160,17 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
                     st.success(f"✅ Indicador '{nome}' criado com sucesso!")
 
-                    # Limpar estado da sessão do formulário e estados dinâmicos após a criação bem-sucedida
-                    # Limpa o dicionário associado à chave do formulário
-                    st.session_state[form_key] = {
-                        'nome': '', 'objetivo': '', 'formula': '', 'unidade': '',
-                        'meta': 0.0, 'comparacao': 'Maior é melhor',
-                        'tipo_grafico': TIPOS_GRAFICOS[0], 'responsavel': SETORES[0],
-                    }
+                    # --- CORREÇÃO: Limpar estado do formulário e estados dinâmicos após a criação bem-sucedida ---
+                    # Limpa o dicionário associado à chave do formulário MODIFICANDO CADA CHAVE INDIVIDUALMENTE
+                    st.session_state[form_key]['nome'] = ''
+                    st.session_state[form_key]['objetivo'] = ''
+                    st.session_state[form_key]['formula'] = ''
+                    st.session_state[form_key]['unidade'] = ''
+                    st.session_state[form_key]['meta'] = 0.0
+                    st.session_state[form_key]['comparacao'] = 'Maior é melhor'
+                    st.session_state[form_key]['tipo_grafico'] = TIPOS_GRAFICOS[0]
+                    st.session_state[form_key]['responsavel'] = SETORES[0]
+
                     # Limpa os estados dinâmicos separados
                     st.session_state.create_current_formula_vars = []
                     st.session_state.create_current_var_descriptions = {}
@@ -1170,8 +1180,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
                     st.rerun() # Recarrega a página para limpar o formulário
 
-    st.markdown('</div>', unsafe_allow_html=True)
-
+    st.markdown('</div>', unsafe_allow_html=True).
 
 def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE, RESULTS_FILE):
     """Mostra a página de edição de indicador com fórmula dinâmica."""
