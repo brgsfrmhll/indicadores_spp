@@ -1180,7 +1180,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
                     st.rerun() # Recarrega a página para limpar o formulário
 
-    st.markdown('</div>', unsafe_allow_html=True).
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE, RESULTS_FILE):
     """Mostra a página de edição de indicador com fórmula dinâmica."""
