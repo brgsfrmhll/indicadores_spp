@@ -1186,7 +1186,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     # se houver variáveis. Não precisamos de um 'else' aqui.
 
 
-    st.markdown('</div>', unsafe_allow_html=True)8
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE, RESULTS_FILE):
     """Mostra a página de edição de indicador com fórmula dinâmica."""
