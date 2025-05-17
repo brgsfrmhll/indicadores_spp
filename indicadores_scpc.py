@@ -892,7 +892,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         st.session_state.create_test_result = None
     if 'show_variable_section' not in st.session_state:
         st.session_state.show_variable_section = False
-    # NOVO: Estado para controlar se a fórmula foi carregada (para exibir a seção de variáveis)
+    # Estado para controlar se a fórmula foi carregada (para exibir a seção de variáveis)
     if 'formula_loaded' not in st.session_state:
         st.session_state.formula_loaded = False
 
@@ -964,9 +964,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             st.info(f"Variáveis detectadas na fórmula: {', '.join(st.session_state.create_current_formula_vars)}")
             st.write("Defina a descrição e insira valores de teste para cada variável:")
 
-            # Inputs para descrição e valores de teste (dentro do form para serem submetidos com o teste/criação)
-            # Usamos um formulário SEPARADO para o teste, para não submeter o formulário principal
-            # ao clicar em "Testar Fórmula".
+            # Formulário SEPARADO para o teste
             with st.form(key="test_formula_form"):
                 cols_desc = st.columns(min(3, len(st.session_state.create_current_formula_vars)))
                 cols_sample = st.columns(min(3, len(st.session_state.create_current_formula_vars)))
@@ -989,16 +987,13 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                          new_sample_values[var] = st.number_input(
                              f"Valor de Teste para '{var}'",
                              value=float(st.session_state.create_sample_values.get(var, 0.0)),
-                             step=0.01,
-                             format="%.2f",
+                             step=0.01, # Ajuste o passo conforme a necessidade
+                             format="%.2f", # Limitar a 2 casas decimais
                              key=f"test_sample_input_{var}" # Chave única para o input DENTRO do form de teste
                          )
 
                 # Atualiza estados dinâmicos com valores dos inputs do form de teste
-                # Estes estados serão usados na lógica fora do form quando o botão for clicado
-                # NOTA: Esta atualização acontece APÓS a submissão do form de teste.
-                # Para que os valores mais recentes estejam disponíveis para o botão "Testar",
-                # o botão "Testar" DEVE estar DENTRO deste formulário.
+                # Estes estados serão usados na lógica DENTRO deste form quando o botão for clicado
                 st.session_state.create_current_var_descriptions = new_var_descriptions
                 st.session_state.create_sample_values = new_sample_values
 
@@ -1006,65 +1001,63 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                 # Botão para testar a fórmula (dentro do form de teste)
                 test_formula_button = st.form_submit_button("✨ Testar Fórmula")
 
-                # Exibir resultado do teste (dentro do form de teste)
+                # --- Lógica para lidar com o botão "Testar Fórmula" (AGORA DENTRO DO FORM) ---
+                # Esta lógica é acionada quando este formulário é submetido.
+                if test_formula_button:
+                     # Lógica para calcular o resultado (copiada e adaptada do create_indicator)
+                     formula_str = st.session_state.get("create_formula_input", "") # Lê a fórmula do input externo
+                     # Os valores de teste já foram atualizados nos estados dinâmicos pelos inputs deste form
+                     variable_values = st.session_state.create_sample_values
+                     unidade_value = st.session_state.get("create_unidade_input", "") # Lê a unidade do input externo
+
+                     if not formula_str:
+                          st.warning("⚠️ Por favor, insira uma fórmula para testar.")
+                          st.session_state.create_test_result = None
+                     elif not variable_values and formula_str: # Testar fórmula sem variáveis (valor fixo)
+                          try:
+                              # Tenta avaliar a fórmula como um valor fixo
+                              calculated_result = float(sympify(formula_str))
+                              st.session_state.create_test_result = calculated_result
+                          except (SympifyError, ValueError) as e:
+                              st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
+                              st.session_state.create_test_result = None
+                          except Exception as e:
+                               st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                               st.session_state.create_test_result = None
+                     elif variable_values: # Testar fórmula com variáveis
+                          try:
+                              # Criar objetos simbólicos para as variáveis
+                              var_symbols = symbols(list(variable_values.keys()))
+                              # Parsear a fórmula
+                              expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
+
+                              # Substituir os símbolos pelos valores numéricos
+                              # Garantir que os valores são numéricos antes de substituir
+                              subs_dict = {symbols(var): float(value) for var, value in variable_values.items()}
+                              calculated_result = float(expr.subs(subs_dict))
+
+                              st.session_state.create_test_result = calculated_result
+
+                          except SympifyError as e:
+                              st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
+                              st.session_state.create_test_result = None # Limpa resultado calculado
+                          except ZeroDivisionError:
+                              st.error("❌ Erro ao calcular a fórmula: Divisão por zero com os valores de teste fornecidos.")
+                              st.session_state.create_test_result = None # Limpa resultado calculado
+                          except Exception as e:
+                               # Captura o erro específico e exibe uma mensagem mais amigável,
+                               # ou a mensagem original para outros erros inesperados
+                               if "cannot create 'dict_keys' instances" in str(e):
+                                    st.error("❌ Erro interno ao processar as variáveis da fórmula. Verifique se as variáveis na fórmula correspondem às variáveis definidas para o indicador.")
+                               else:
+                                    st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                               st.session_state.create_test_result = None # Limpa resultado calculado
+
+                # Exibir resultado do teste (dentro deste form)
+                # O resultado será exibido no mesmo rerun em que foi calculado
                 if st.session_state.create_test_result is not None:
                      unidade_value = st.session_state.get("create_unidade_input", "") # Lê a unidade do input externo
                      st.markdown(f"**Resultado do Teste:** **{st.session_state.create_test_result:.2f}{unidade_value}**")
-
-            # --- Lógica para lidar com o botão "Testar Fórmula" (FORA do formulário de teste) ---
-            # Esta lógica é acionada quando o formulário de teste é submetido.
-            if test_formula_button:
-                 # Lógica para testar a fórmula com valores de teste
-                 # Acessa a fórmula do input externo via session_state
-                 formula_str = st.session_state.get("create_formula_input", "")
-                 # Acessa os valores de teste dos estados dinâmicos (que foram atualizados pelos inputs do form de teste)
-                 variable_values = st.session_state.create_sample_values
-
-                 if not formula_str:
-                      st.warning("⚠️ Por favor, insira uma fórmula para testar.")
-                      st.session_state.create_test_result = None
-                 elif not variable_values and formula_str: # Testar fórmula sem variáveis (valor fixo)
-                      try:
-                          # Tenta avaliar a fórmula como um valor fixo
-                          calculated_result = float(sympify(formula_str))
-                          st.session_state.create_test_result = calculated_result
-                      except (SympifyError, ValueError) as e:
-                          st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
-                          st.session_state.create_test_result = None
-                      except Exception as e:
-                           st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
-                           st.session_state.create_test_result = None
-                 elif variable_values: # Testar fórmula com variáveis
-                      try:
-                          # Criar objetos simbólicos para as variáveis
-                          var_symbols = symbols(list(variable_values.keys()))
-                          # Parsear a fórmula
-                          expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
-
-                          # Substituir os símbolos pelos valores numéricos
-                          # Garantir que os valores são numéricos antes de substituir
-                          subs_dict = {symbols(var): float(value) for var, value in variable_values.items()}
-                          calculated_result = float(expr.subs(subs_dict))
-
-                          st.session_state.create_test_result = calculated_result
-
-                      except SympifyError as e:
-                          st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
-                          st.session_state.create_test_result = None # Limpa resultado calculado
-                      except ZeroDivisionError:
-                          st.error("❌ Erro ao calcular a fórmula: Divisão por zero com os valores de teste fornecidos.")
-                          st.session_state.create_test_result = None # Limpa resultado calculado
-                      except Exception as e:
-                           # Captura o erro específico e exibe uma mensagem mais amigável,
-                           # ou a mensagem original para outros erros inesperados
-                           if "cannot create 'dict_keys' instances" in str(e):
-                                st.error("❌ Erro interno ao processar as variáveis da fórmula. Verifique se as variáveis na fórmula correspondem às variáveis definidas para o indicador.")
-                           else:
-                                st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
-                           st.session_state.create_test_result = None # Limpa resultado calculado
-
-                 # Não precisamos de um rerun explícito aqui, pois clicar no botão já submeteu o form e causou um rerun.
-                 # O resultado do teste será exibido no próximo rerun.
 
 
         else:
@@ -1092,9 +1085,9 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     # Outros campos do indicador (dentro do form principal para serem submetidos juntos na criação)
     st.markdown("---")
     with st.form(key=form_key): # Este é o formulário principal para criar o indicador
-        # NOVO: Limitar input de meta a 2 casas decimais
+        # Limitar input de meta a 2 casas decimais
         meta = st.number_input("Meta", step=0.01, format="%.2f", key=f"{form_key}_meta")
-        comparacao = st.selectbox("Comparação", ["Maior é melhor","Menor é melhor"], key=f"{form_key}_comparacao")
+        comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"], key=f"{form_key}_comparacao")
         tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS, key=f"{form_key}_tipo_grafico")
         responsavel = st.selectbox("Setor Responsável", SETORES, key=f"{form_key}_responsavel")
 
@@ -1106,10 +1099,11 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     if create_button:
         # Lógica para criar o indicador
         # Acessa os valores dos inputs do formulário principal via session_state (usando a chave do form)
-        nome_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_nome", "") # NOTA: Nome, Objetivo, Unidade e Fórmula agora são lidos dos inputs EXTERNOS ao form principal
-        objetivo_submitted = st.session_state.get("create_objetivo_input", "") # Lendo do input externo
-        formula_submitted = st.session_state.get("create_formula_input", "") # Lendo do input externo
-        unidade_submitted = st.session_state.get("create_unidade_input", "") # Lendo do input externo
+        # NOTA: Nome, Objetivo, Unidade e Fórmula agora são lidos dos inputs EXTERNOS ao form principal
+        nome_submitted = st.session_state.get("create_nome_input", "")
+        objetivo_submitted = st.session_state.get("create_objetivo_input", "")
+        formula_submitted = st.session_state.get("create_formula_input", "")
+        unidade_submitted = st.session_state.get("create_unidade_input", "")
 
         # Acessa os valores dos inputs DENTRO do form principal via session_state (usando a chave do form)
         meta_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_meta", 0.0)
@@ -1178,10 +1172,17 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     st.session_state["create_formula_input"] = ""
 
                     # Limpa os inputs dentro do form principal (acessando via chave do form)
-                    st.session_state[form_key][f"{form_key}_meta"] = 0.0
-                    st.session_state[form_key][f"{form_key}_comparacao"] = "Maior é melhor"
-                    st.session_state[form_key][f"{form_key}_tipo_grafico"] = TIPOS_GRAFICOS[0]
-                    st.session_state[form_key][f"{form_key}_responsavel"] = SETORES[0]
+                    # É importante verificar se a chave do formulário existe antes de tentar acessar seus elementos
+                    if form_key in st.session_state:
+                        if f"{form_key}_meta" in st.session_state[form_key]:
+                            st.session_state[form_key][f"{form_key}_meta"] = 0.0
+                        if f"{form_key}_comparacao" in st.session_state[form_key]:
+                            st.session_state[form_key][f"{form_key}_comparacao"] = "Maior é melhor"
+                        # Verifica se as listas SETORES e TIPOS_GRAFICOS não estão vazias antes de acessar o índice 0
+                        if f"{form_key}_tipo_grafico" in st.session_state[form_key]:
+                            st.session_state[form_key][f"{form_key}_tipo_grafico"] = TIPOS_GRAFICOS[0] if TIPOS_GRAFICOS else ""
+                        if f"{form_key}_responsavel" in st.session_state[form_key]:
+                            st.session_state[form_key][f"{form_key}_responsavel"] = SETORES[0] if SETORES else ""
 
 
                     # Limpa os estados dinâmicos relacionados à fórmula e teste
@@ -1192,6 +1193,10 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     st.session_state.show_variable_section = False # Oculta a seção de variáveis/teste
                     st.session_state.formula_loaded = False # Reseta o estado de fórmula carregada
 
+                    # Não é estritamente necessário limpar os inputs do formulário de teste explicitamente aqui,
+                    # pois a seção inteira (que contém o formulário de teste) será ocultada
+                    # e os estados dinâmicos (create_current_var_descriptions, create_sample_values)
+                    # que inicializam esses inputs já foram limpos.
 
                     st.rerun() # Recarrega a página para limpar os campos e estados
 
