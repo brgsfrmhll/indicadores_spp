@@ -884,6 +884,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             'nome': '',
             'objetivo': '',
             'formula': '',
+            'unidade': '', # NOVO: Campo para a unidade
             'meta': 0.0,
             'comparacao': 'Maior é melhor',
             'tipo_grafico': TIPOS_GRAFICOS[0],
@@ -902,6 +903,10 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     with st.form(key=form_key): # Usar a chave definida para o formulário
         nome = st.text_input("Nome do Indicador", value=form_state['nome'], key=f"{form_key}_nome")
         objetivo = st.text_area("Objetivo", value=form_state['objetivo'], key=f"{form_key}_objetivo")
+
+        # NOVO: Campo para a unidade do resultado
+        unidade = st.text_input("Unidade do Resultado", value=form_state['unidade'], placeholder="Ex: %", key=f"{form_key}_unidade")
+
         formula = st.text_input(
             "Fórmula de Cálculo (Use letras para variáveis, ex: A+B/C)",
             value=form_state['formula'],
@@ -909,7 +914,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             key=f"{form_key}_formula" # Chave única para este input
         )
 
-        # --- NOVO: Seção para Variáveis e Teste da Fórmula ---
+        # --- Seção para Variáveis e Teste da Fórmula ---
         st.markdown("---")
         st.subheader("Variáveis da Fórmula e Teste")
 
@@ -956,11 +961,12 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     )
                 with cols_sample[col_idx]:
                      # Usar o valor de teste existente do estado da sessão
+                     # NOVO: Limitar input de variável a 2 casas decimais
                      new_sample_values[var] = st.number_input(
                          f"Valor de Teste para '{var}'",
                          value=float(form_state['sample_values'].get(var, 0.0)), # Garantir que o valor inicial é float
                          step=0.01, # Ajuste o passo conforme a necessidade
-                         format="%.4f", # Ajuste o formato conforme a necessidade
+                         format="%.2f", # NOVO: Limitar a 2 casas decimais
                          key=f"{form_key}_sample_input_{var}" # Chave única para o input
                      )
 
@@ -973,7 +979,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
             # Exibir o resultado do teste se estiver no estado da sessão
             if form_state['test_result'] is not None:
-                 st.markdown(f"**Resultado do Teste:** **{form_state['test_result']:.4f}**")
+                 # NOVO: Formatar resultado do teste para 2 casas decimais e adicionar unidade
+                 st.markdown(f"**Resultado do Teste:** **{form_state['test_result']:.2f}{unidade}**")
 
 
         else:
@@ -986,7 +993,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
         # Outros campos do indicador
         st.markdown("---")
-        meta = st.number_input("Meta", value=float(form_state['meta']), step=0.01, format="%.4f", key=f"{form_key}_meta")
+        # NOVO: Limitar input de meta a 2 casas decimais
+        meta = st.number_input("Meta", value=float(form_state['meta']), step=0.01, format="%.2f", key=f"{form_key}_meta")
         comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"],
                                   index=0 if form_state['comparacao'] == "Maior é melhor" else 1, key=f"{form_key}_comparacao")
         tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS,
@@ -994,10 +1002,10 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         responsavel = st.selectbox("Setor Responsável", SETORES,
                                    index=SETORES.index(form_state['responsavel']) if form_state['responsavel'] in SETORES else 0, key=f"{form_key}_responsavel")
 
-        # --- NOVO: Botão principal de criação (dentro do formulário) ---
+        # Botão principal de criação (dentro do formulário)
         submitted_create = st.form_submit_button("➕ Criar")
 
-        # --- NOVO: Lógica para lidar com os botões de submissão ---
+        # --- Lógica para lidar com os botões de submissão ---
         if test_button_clicked:
              # Lógica para testar a fórmula
              formula_str = form_state['formula']
@@ -1006,13 +1014,20 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
              if not formula_str:
                   st.warning("⚠️ Por favor, insira uma fórmula para testar.")
                   form_state['test_result'] = None
-             elif not variable_values:
-                  st.info("Nenhuma variável detectada na fórmula para testar.")
-                  form_state['test_result'] = None
-             else:
+             elif not variable_values and formula_str: # Testar fórmula sem variáveis (valor fixo)
+                  try:
+                      # Tenta avaliar a fórmula como um valor fixo
+                      calculated_result = float(sympify(formula_str))
+                      form_state['test_result'] = calculated_result
+                  except (SympifyError, ValueError) as e:
+                      st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe ou se todas as variáveis foram inseridas. Detalhes: {e}")
+                      form_state['test_result'] = None
+                  except Exception as e:
+                       st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                       form_state['test_result'] = None
+             elif variable_values: # Testar fórmula com variáveis
                   try:
                       # Criar objetos simbólicos para as variáveis
-                      # CORREÇÃO: Converter dict_keys para list
                       var_symbols = symbols(list(variable_values.keys()))
                       # Parsear a fórmula
                       expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
@@ -1090,6 +1105,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                         "objetivo": objetivo,
                         "formula": formula, # Salva a fórmula
                         "variaveis": form_state['current_var_descriptions'], # Salva as descrições das variáveis
+                        "unidade": unidade, # NOVO: Salva a unidade
                         "meta": meta,
                         "comparacao": comparacao,
                         "tipo_grafico": tipo_grafico,
@@ -1110,6 +1126,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                         'nome': '',
                         'objetivo': '',
                         'formula': '',
+                        'unidade': '', # NOVO: Limpa a unidade
                         'meta': 0.0,
                         'comparacao': 'Maior é melhor',
                         'tipo_grafico': TIPOS_GRAFICOS[0],
@@ -1122,8 +1139,6 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     }
 
                     st.rerun() # Recarrega a página para limpar o formulário
-            # else: # Este else não é mais necessário pois validamos no início do bloco submitted_create
-            #     st.warning("⚠️ Por favor, preencha todos os campos obrigatórios (Nome, Objetivo, Fórmula, Meta).") # Meta pode ser 0, então não é obrigatório aqui se houver fórmula
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1193,7 +1208,7 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
              # Limpa os valores de variáveis ao mudar de indicador
              st.session_state.current_variable_values = {}
 
-        # --- NOVO: Estado para gerenciar a confirmação de exclusão ---
+        # Estado para gerenciar a confirmação de exclusão
         delete_state_key = f"delete_state_{selected_indicator['id']}"
         if delete_state_key not in st.session_state:
             st.session_state[delete_state_key] = None # Pode ser None, 'confirming', 'deleting'
@@ -1204,6 +1219,9 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
         with st.form(key=f"edit_form_{selected_indicator['id']}"):
             nome = st.text_input("Nome do Indicador", value=selected_indicator["nome"])
             objetivo = st.text_area("Objetivo", value=selected_indicator["objetivo"])
+
+            # NOVO: Campo para a unidade do resultado
+            unidade = st.text_input("Unidade do Resultado", value=selected_indicator.get("unidade", ""), placeholder="Ex: %", key=f"edit_unidade_input_{selected_indicator['id']}")
 
             # Campo para a fórmula (pré-preenchido com o valor existente)
             formula = st.text_input(
@@ -1258,8 +1276,8 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
 
             # Outros campos do indicador
             st.markdown("---")
-            # O campo meta agora é opcional se houver fórmula com variáveis
-            meta = st.number_input("Meta", value=float(selected_indicator.get("meta", 0.0)), step=0.01, format="%.4f")
+            # NOVO: Limitar input de meta a 2 casas decimais
+            meta = st.number_input("Meta", value=float(selected_indicator.get("meta", 0.0)), step=0.01, format="%.2f")
 
             comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"],
                                       index=0 if selected_indicator.get("comparacao", "Maior é melhor") == "Maior é melhor" else 1)
@@ -1284,11 +1302,11 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
             )
 
             with col1:
-                # Botão Salvar - Sem 'key' dentro do form
                 submit = st.form_submit_button("💾 Salvar")
             with col3:
                 # Botão Excluir - Sem 'key' dentro do form
-                delete_button_clicked = st.form_submit_button("��️ Excluir", type="secondary") # REMOVIDO O ARGUMENTO 'key'
+                delete_button_clicked = st.form_submit_button("️ Excluir", type="secondary") # REMOVIDO O ARGUMENTO 'key'
+
 
             # --- Lógica após a submissão do formulário ---
             if submit:
@@ -1324,6 +1342,7 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
                                 ind["objetivo"] = objetivo
                                 ind["formula"] = formula # Salva a fórmula editada
                                 ind["variaveis"] = st.session_state.current_var_descriptions # Salva as descrições editadas
+                                ind["unidade"] = unidade # NOVO: Salva a unidade
                                 ind["meta"] = meta
                                 ind["comparacao"] = comparacao
                                 ind["tipo_grafico"] = tipo_grafico
@@ -1345,14 +1364,14 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
                 else:
                     st.warning("⚠️ Por favor, preencha todos os campos obrigatórios (Nome, Objetivo, Fórmula).")
 
-            # --- NOVO: Lógica para iniciar a confirmação de exclusão (fora do form) ---
+            # Lógica para iniciar a confirmação de exclusão (fora do form)
             # Se o botão de exclusão dentro do formulário foi clicado, definimos o estado para 'confirming'
             if delete_button_clicked:
                  st.session_state[delete_state_key] = 'confirming'
                  st.rerun() # Rerun para exibir a mensagem de confirmação fora do formulário
 
 
-        # --- NOVO: Bloco de confirmação de exclusão (fora do form) ---
+        # Bloco de confirmação de exclusão (fora do form)
         # Este bloco só é exibido se o estado for 'confirming'
         if st.session_state.get(delete_state_key) == 'confirming':
             st.warning(f"Tem certeza que deseja excluir o indicador '{selected_indicator['nome']}'?")
@@ -1371,7 +1390,7 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
                     st.session_state[delete_state_key] = None
                     st.rerun()
 
-        # --- NOVO: Bloco de execução da exclusão (fora do form) ---
+        # Bloco de execução da exclusão (fora do form)
         # Este bloco só é executado se o estado for 'deleting'
         if st.session_state.get(delete_state_key) == 'deleting':
             # Executa a exclusão
@@ -1385,12 +1404,12 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
             st.session_state.current_var_descriptions = {}
             st.session_state.current_variable_values = {} # Limpa também os valores de variáveis
 
+
             st.rerun()
 
 
     st.markdown('</div>', unsafe_allow_html=True)
-
-
+     
 def display_result_with_delete(result, selected_indicator, RESULTS_FILE, USER_LOG_FILE):
     """Exibe um resultado com a opção de excluir."""
     data_referencia = result.get('data_referencia')
@@ -1453,9 +1472,14 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                  st.markdown(f"**Fórmula de Cálculo:** `{selected_indicator['formula']}`")
             else:
                  st.markdown(f"**Fórmula de Cálculo:** Não definida (preenchimento direto)")
+            # NOVO: Mostrar a unidade
+            st.markdown(f"**Unidade do Resultado:** {selected_indicator.get('unidade', 'Não definida')}")
+
 
         with col2:
-            st.markdown(f"**Meta:** {selected_indicator['meta']}")
+            # NOVO: Formatar exibição da meta para 2 casas decimais e adicionar unidade
+            meta_display = f"{float(selected_indicator.get('meta', 0.0)):.2f}{selected_indicator.get('unidade', '')}"
+            st.markdown(f"**Meta:** {meta_display}")
             st.markdown(f"**Comparação:** {selected_indicator['comparacao']}")
             st.markdown(f"**Setor Responsável:** {selected_indicator['responsavel']}")
 
@@ -1533,24 +1557,12 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                     # Usar colunas para organizar os inputs das variáveis
                     vars_to_fill = list(selected_indicator["variaveis"].items())
                     if vars_to_fill:
-                        cols = st.columns(min(3, len(vars_to_fill)))
-                        # Limpa os valores de variáveis no estado da sessão ao mudar de período ou indicador
-                        # if st.session_state.get('last_selected_period_fill') != selected_period_str or st.session_state.get('last_selected_indicator_fill') != selected_indicator['id']:
-                        #      st.session_state.current_variable_values = {}
-                        #      st.session_state.last_selected_period_fill = selected_period_str
-                        #      st.session_state.last_selected_indicator_fill = selected_indicator['id']
-
-                        # Inicializa ou carrega valores existentes para o período selecionado (se houver edição)
-                        # Esta lógica é mais complexa se permitirmos editar resultados antigos.
-                        # Para simplificar, vamos focar em adicionar novos resultados.
-                        # Limpa os valores no estado da sessão sempre que o formulário é exibido para um novo preenchimento.
-                        # st.session_state.current_variable_values = {} # Isso limparia a cada rerun, não é ideal.
-                        # Vamos usar uma chave única para o formulário para manter os valores durante o preenchimento.
-
                         # Usar uma chave única para os inputs de variável dentro do formulário
                         variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"
                         if variable_values_key not in st.session_state:
                              st.session_state[variable_values_key] = {}
+
+                        cols = st.columns(min(3, len(vars_to_fill)))
 
                         # Criar inputs para cada variável
                         for i, (var, desc) in enumerate(vars_to_fill):
@@ -1558,72 +1570,44 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                             with cols[col_idx]:
                                 # Usar o valor do estado da sessão se existir, caso contrário, 0.0
                                 default_value = st.session_state[variable_values_key].get(var, 0.0)
+                                # NOVO: Limitar input de variável a 2 casas decimais
                                 st.session_state[variable_values_key][var] = st.number_input(
                                     f"{var} ({desc or 'Sem descrição'})",
                                     value=float(default_value), # Garantir que o valor inicial é float
                                     step=0.01, # Ajuste o passo conforme a necessidade
-                                    format="%.4f", # Ajuste o formato conforme a necessidade
+                                    format="%.2f", # NOVO: Limitar a 2 casas decimais
                                     key=f"var_input_{var}_{selected_indicator['id']}_{selected_period_str}" # Chave única para o input
                                 )
 
                         # Botão para calcular o resultado
-                        if st.form_submit_button("✨ Calcular Resultado"):
-                            # Obter os valores das variáveis do estado da sessão
-                            variable_values = st.session_state.get(variable_values_key, {})
-                            formula_str = selected_indicator["formula"]
+                        test_button_clicked = st.form_submit_button("✨ Calcular Resultado")
 
-                            try:
-                                # Criar objetos simbólicos para as variáveis
-                                # CORREÇÃO: Converter dict_keys para list
-                                var_symbols = symbols(list(variable_values.keys()))
-                                # Parsear a fórmula
-                                expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
-
-                                # Substituir os símbolos pelos valores numéricos
-                                # Garantir que os valores são numéricos antes de substituir
-                                subs_dict = {symbols(var): float(value) for var, value in variable_values.items()}
-                                calculated_result = float(expr.subs(subs_dict))
-
-                                # Armazenar o resultado calculado no estado da sessão
-                                st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = calculated_result
-                                st.success(f"Resultado calculado: **{calculated_result:.4f}**") # Exibe o resultado formatado
-
-                            except SympifyError as e:
-                                st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
-                                st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa resultado calculado
-                            except ZeroDivisionError:
-                                st.error("❌ Erro ao calcular a fórmula: Divisão por zero.")
-                                st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa resultado calculado
-                            except Exception as e:
-                                # Captura o erro específico e exibe uma mensagem mais amigável,
-                                # ou a mensagem original para outros erros inesperados
-                                if "cannot create 'dict_keys' instances" in str(e):
-                                     st.error("❌ Erro interno ao processar as variáveis da fórmula. Verifique se as variáveis na fórmula correspondem às variáveis definidas para o indicador.")
-                                else:
-                                     st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
-                                st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa resultado calculado
-                                
                         # Exibir o resultado calculado se estiver no estado da sessão
-                        if st.session_state.get(f"calculated_result_{selected_indicator['id']}_{selected_period_str}") is not None:
-                             calculated_result = st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"]
-                             st.markdown(f"**Resultado Calculado:** **{calculated_result:.4f}**") # Exibe novamente se já calculado
+                        calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
+                        if st.session_state.get(calculated_result_state_key) is not None:
+                             calculated_result = st.session_state[calculated_result_state_key]
+                             # NOVO: Formatar resultado calculado para 2 casas decimais e adicionar unidade
+                             result_display = f"{calculated_result:.2f}{selected_indicator.get('unidade', '')}"
+                             st.markdown(f"**Resultado Calculado:** **{result_display}**") # Exibe novamente se já calculado
 
-                        # O campo 'resultado' direto não é exibido se houver fórmula
-                        resultado_input_value = None # Não usamos o input direto
 
                     else:
                          st.warning("O indicador tem uma fórmula, mas nenhuma variável definida. O resultado será um valor fixo.")
                          # Se não tem variáveis, volta para o input direto de resultado
-                         resultado_input_value = st.number_input("Resultado", step=0.01, format="%.4f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
+                         # NOVO: Limitar input de resultado direto a 2 casas decimais
+                         resultado_input_value = st.number_input("Resultado", step=0.01, format="%.2f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
                          st.session_state[variable_values_key] = {} # Garante que valores_variaveis está vazio
-                         st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Garante que resultado calculado está vazio
+                         st.session_state[calculated_result_state_key] = None # Garante que resultado calculado está vazio
 
 
                 else:
                     # Indicador sem fórmula, usa preenchimento direto do resultado
-                    resultado_input_value = st.number_input("Resultado", step=0.01, format="%.4f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
+                    # NOVO: Limitar input de resultado direto a 2 casas decimais
+                    resultado_input_value = st.number_input("Resultado", step=0.01, format="%.2f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
+                    variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}" # Definir a chave mesmo sem variáveis
                     st.session_state[variable_values_key] = {} # Garante que valores_variaveis está vazio
-                    st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Garante que resultado calculado está vazio
+                    calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}" # Definir a chave mesmo sem cálculo
+                    st.session_state[calculated_result_state_key] = None # Garante que resultado calculado está vazio
 
 
                 # Campos de Observações e Análise Crítica (mantidos)
@@ -1665,15 +1649,71 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                 # Botão Salvar
                 submitted = st.form_submit_button("✔️ Salvar")
 
-            # Lógica de salvamento
-            if submitted and selected_period:
+            # --- Lógica após a submissão do formulário ---
+            # NOVO: Lógica para lidar com os botões de submissão (Calcular e Salvar)
+            if test_button_clicked:
+                 # Lógica para calcular o resultado (copiada e adaptada do create_indicator)
+                 formula_str = selected_indicator.get("formula", "")
+                 variable_values = st.session_state.get(variable_values_key, {})
+
+                 if not formula_str:
+                      st.warning("⚠️ Este indicador não possui fórmula definida para calcular.")
+                      st.session_state[calculated_result_state_key] = None
+                 elif not variable_values and formula_str: # Testar fórmula sem variáveis (valor fixo)
+                      try:
+                          # Tenta avaliar a fórmula como um valor fixo
+                          calculated_result = float(sympify(formula_str))
+                          st.session_state[calculated_result_state_key] = calculated_result
+                          # st.success(f"Resultado calculado: **{calculated_result:.2f}{selected_indicator.get('unidade', '')}**") # Exibir após rerun
+                      except (SympifyError, ValueError) as e:
+                          st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe ou se todas as variáveis foram inseridas. Detalhes: {e}")
+                          st.session_state[calculated_result_state_key] = None
+                      except Exception as e:
+                           st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                           st.session_state[calculated_result_state_key] = None
+                 elif variable_values: # Testar fórmula com variáveis
+                      try:
+                          # Criar objetos simbólicos para as variáveis
+                          var_symbols = symbols(list(variable_values.keys()))
+                          # Parsear a fórmula
+                          expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
+
+                          # Substituir os símbolos pelos valores numéricos
+                          # Garantir que os valores são numéricos antes de substituir
+                          subs_dict = {symbols(var): float(value) for var, value in variable_values.items()}
+                          calculated_result = float(expr.subs(subs_dict))
+
+                          st.session_state[calculated_result_state_key] = calculated_result
+                          # st.success(f"Resultado calculado: **{calculated_result:.2f}{selected_indicator.get('unidade', '')}**") # Exibir após rerun
+
+                      except SympifyError as e:
+                          st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
+                          st.session_state[calculated_result_state_key] = None # Limpa resultado calculado
+                      except ZeroDivisionError:
+                          st.error("❌ Erro ao calcular a fórmula: Divisão por zero com os valores de teste fornecidos.")
+                          st.session_state[calculated_result_state_key] = None # Limpa resultado calculado
+                      except Exception as e:
+                           # Captura o erro específico e exibe uma mensagem mais amigável,
+                           # ou a mensagem original para outros erros inesperados
+                           if "cannot create 'dict_keys' instances" in str(e):
+                                st.error("❌ Erro interno ao processar as variáveis da fórmula. Verifique se as variáveis na fórmula correspondem às variáveis definidas para o indicador.")
+                           else:
+                                st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                           st.session_state[calculated_result_state_key] = None # Limpa resultado calculado
+
+                 # Rerun para atualizar a exibição com o resultado calculado
+                 st.rerun()
+
+
+            elif submitted:
+                # Lógica de salvamento
                 final_result_to_save = None
                 values_to_save = {}
 
                 # Determinar qual resultado salvar (calculado ou direto)
                 if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
                     # Se tem fórmula, tenta usar o resultado calculado do estado da sessão
-                    final_result_to_save = st.session_state.get(f"calculated_result_{selected_indicator['id']}_{selected_period_str}")
+                    final_result_to_save = st.session_state.get(calculated_result_state_key)
                     values_to_save = st.session_state.get(variable_values_key, {}) # Salva os valores das variáveis
 
                     if final_result_to_save is None:
@@ -1698,7 +1738,7 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                     campos_preenchidos = sum(1 for campo in analise_critica.values() if campo and campo.strip()) # Verifica se o campo não é None e não está vazio/só espaços
                     total_campos = 7 # 5W2H
 
-                    if campos_preenchidos == 0: # <-- AQUI ESTAVA O ERRO!
+                    if campos_preenchidos == 0. # <-- AQUI ESTAVA O ERRO!
                         status_analise = "❌ Não preenchida"
                     elif campos_preenchidos == total_campos:
                         status_analise = "✅ Preenchida completamente"
@@ -1738,9 +1778,11 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                             f"✅ Resultado adicionado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
 
                         # Limpar estados da sessão relacionados ao preenchimento após salvar
-                        st.session_state.current_variable_values = {} # Limpa os valores das variáveis
-                        st.session_state[variable_values_key] = {} # Limpa a chave específica do formulário
-                        st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa o resultado calculado
+                        # st.session_state.current_variable_values = {} # Limpa os valores das variáveis
+                        if variable_values_key in st.session_state:
+                             del st.session_state[variable_values_key] # Limpa a chave específica do formulário
+                        if calculated_result_state_key in st.session_state:
+                             del st.session_state[calculated_result_state_key] # Limpa o resultado calculado
 
                         st.rerun() # Recarrega a página para atualizar a lista de períodos disponíveis
                 else:
@@ -1752,6 +1794,9 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
             # Ordenar resultados por data (mais recente primeiro)
             indicator_results_sorted = sorted(indicator_results, key=lambda x: x.get("data_referencia", ""), reverse=True)
 
+            # Obter a unidade do indicador para exibição
+            unidade_display = selected_indicator.get('unidade', '')
+
             # Exibir cabeçalho da tabela
             # Ajustar colunas para incluir valores das variáveis ou não
             if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
@@ -1760,12 +1805,12 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                  with cols_header[0]: st.markdown("**Período**")
                  for i, var in enumerate(selected_indicator["variaveis"].keys()):
                       with cols_header[i+1]: st.markdown(f"**{var}**")
-                 with cols_header[len(selected_indicator["variaveis"])+1]: st.markdown("**Resultado**")
+                 with cols_header[len(selected_indicator["variaveis"])+1]: st.markdown(f"**Resultado ({unidade_display})**") # NOVO: Adiciona unidade ao cabeçalho
                  with cols_header[len(selected_indicator["variaveis"])+2]: st.markdown("**Observações**")
                  with cols_header[len(selected_indicator["variaveis"])+3]: st.markdown("**Análise Crítica**")
                  with cols_header[len(selected_indicator["variaveis"])+4]: st.markdown("**Ações**")
 
-                 # Iterar sobre os resultados e exibir cada um
+                 # Iterar sobre os resultados e exibir cada uno
                  for result in indicator_results_sorted:
                       cols_data = st.columns([1.5] + [1] * len(selected_indicator["variaveis"]) + [1, 2, 2, 1])
                       data_referencia = result.get('data_referencia')
@@ -1774,8 +1819,22 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                            # Exibir valores das variáveis
                            valores_vars = result.get("valores_variaveis", {})
                            for i, var in enumerate(selected_indicator["variaveis"].keys()):
-                                with cols_data[i+1]: st.write(valores_vars.get(var, 'N/A')) # Exibe o valor da variável ou N/A
-                           with cols_data[len(selected_indicator["variaveis"])+1]: st.write(result.get('resultado', 'N/A'))
+                                with cols_data[i+1]:
+                                     # NOVO: Formatar exibição dos valores das variáveis a 2 casas decimais
+                                     var_value = valores_vars.get(var)
+                                     if isinstance(var_value, (int, float)):
+                                          st.write(f"{var_value:.2f}")
+                                     else:
+                                          st.write('N/A') # Exibe o valor da variável ou N/A
+
+                           with cols_data[len(selected_indicator["variaveis"])+1]:
+                                # NOVO: Formatar exibição do resultado a 2 casas decimais e adicionar unidade
+                                result_value = result.get('resultado')
+                                if isinstance(result_value, (int, float)):
+                                     st.write(f"{result_value:.2f}{unidade_display}")
+                                else:
+                                     st.write('N/A')
+
                            with cols_data[len(selected_indicator["variaveis"])+2]: st.write(result.get('observacao', 'N/A'))
                            with cols_data[len(selected_indicator["variaveis"])+3]:
                                 # Exibir status da análise crítica e expandir para ver detalhes
@@ -1794,7 +1853,7 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                                                st.markdown("**Como:** " + analise_dict.get("how", ""))
                                                st.markdown("**Quanto custa:** " + analise_dict.get("howMuch", ""))
                                 except:
-                                     st.write("Erro ao carregar análise.")
+                                      st.write("Erro ao carregar análise.")
 
                            with cols_data[len(selected_indicator["variaveis"])+4]:
                                 if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}"):
@@ -1806,7 +1865,7 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                  # Se não tem fórmula, mostra colunas padrão
                  col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
                  with col1: st.markdown("**Período**")
-                 with col2: st.markdown("**Resultado**")
+                 with col2: st.markdown(f"**Resultado ({unidade_display})**") # NOVO: Adiciona unidade ao cabeçalho
                  with col3: st.markdown("**Observações**")
                  with col4: st.markdown("**Análise Crítica**")
                  with col5: st.markdown("**Data de Atualização**")
@@ -1818,7 +1877,13 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                       if data_referencia:
                            col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
                            with col1: st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
-                           with col2: st.write(result.get('resultado', 'N/A'))
+                           with col2:
+                                # NOVO: Formatar exibição do resultado a 2 casas decimais e adicionar unidade
+                                result_value = result.get('resultado')
+                                if isinstance(result_value, (int, float)):
+                                     st.write(f"{result_value:.2f}{unidade_display}")
+                                else:
+                                     st.write('N/A')
                            with col3: st.write(result.get('observacao', 'N/A'))
                            with col4:
                                 # Exibir status da análise crítica e expandir para ver detalhes
@@ -1860,20 +1925,31 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
         with st.expander("📜 Log de Preenchimentos (clique para visualizar)", expanded=False):
             if log_results:
                 log_data_list = []
+                unidade_log = selected_indicator.get('unidade', '') # Obter unidade para o log
                 for r in log_results:
+                     # NOVO: Formatar resultado salvo para 2 casas decimais e adicionar unidade
+                     result_saved_display = r.get("resultado")
+                     if isinstance(result_saved_display, (int, float)):
+                          result_saved_display = f"{result_saved_display:.2f}{unidade_log}"
+                     else:
+                          result_saved_display = "N/A"
+
+                     # NOVO: Formatar valores das variáveis para 2 casas decimais
+                     valores_vars = r.get("valores_variaveis", {})
+                     if valores_vars:
+                          valores_vars_display = ", ".join([f"{v}={float(val):.2f}" if isinstance(val, (int, float)) else f"{v}={val}" for v, val in valores_vars.items()])
+                     else:
+                          valores_vars_display = "N/A"
+
+
                      log_entry = {
                           "Período": pd.to_datetime(r.get("data_referencia")).strftime("%B/%Y") if r.get("data_referencia") else "N/A",
-                          "Resultado Salvo": r.get("resultado", "N/A"),
+                          "Resultado Salvo": result_saved_display, # NOVO: Usar resultado formatado
+                          "Valores Variáveis": valores_vars_display, # NOVO: Usar valores formatados
                           "Usuário": r.get("usuario", "System"),
                           "Status Análise Crítica": r.get("status_analise", get_analise_status(r.get("analise_critica", "{}"))),
                           "Data/Hora Preenchimento": pd.to_datetime(r.get("data_atualizacao", r.get("data_criacao", datetime.now().isoformat()))).strftime("%d/%m/%Y %H:%M")
                      }
-                     # Adicionar valores das variáveis ao log se existirem
-                     valores_vars = r.get("valores_variaveis", {})
-                     if valores_vars:
-                          log_entry["Valores Variáveis"] = ", ".join([f"{v}={val}" for v, val in valores_vars.items()])
-                     else:
-                          log_entry["Valores Variáveis"] = "N/A"
 
                      log_data_list.append(log_entry)
 
