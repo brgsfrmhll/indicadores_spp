@@ -1738,7 +1738,7 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                     campos_preenchidos = sum(1 for campo in analise_critica.values() if campo and campo.strip()) # Verifica se o campo não é None e não está vazio/só espaços
                     total_campos = 7 # 5W2H
 
-                    if campos_preenchidos == 0. # <-- AQUI ESTAVA O ERRO!
+                    if campos_preenchidos == 0:
                         status_analise = "❌ Não preenchida"
                     elif campos_preenchidos == total_campos:
                         status_analise = "✅ Preenchida completamente"
