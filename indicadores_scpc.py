@@ -874,68 +874,82 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     st.header("Criar Novo Indicador")
 
     # Limpar estados de sessão relacionados a outras páginas ou edições
+    # É importante limpar estados de outras funcionalidades para evitar conflitos
     if 'dashboard_data' in st.session_state:
         del st.session_state['dashboard_data']
-    st.session_state.editing_indicator_id = None
+    st.session_state.editing_indicator_id = None # Garante que não estamos em modo de edição
 
-    # Chave para o formulário principal
+    # Chave única para o formulário principal
     form_key = "create_indicator_form"
 
-    # Inicializar estados de sessão para variáveis dinâmicas e teste
+    # --- Inicializar e Gerenciar Estados de Sessão para Variáveis Dinâmicas e Teste ---
+    # Estes estados precisam persistir entre reruns para controlar a exibição e os valores.
     if 'create_current_formula_vars' not in st.session_state:
-        st.session_state.create_current_formula_vars = []
+        st.session_state.create_current_formula_vars = [] # Lista de variáveis detectadas (ex: ['A', 'B', 'C'])
     if 'create_current_var_descriptions' not in st.session_state:
-        st.session_state.create_current_var_descriptions = {}
+        st.session_state.create_current_var_descriptions = {} # Dicionário {variavel: descricao}
     if 'create_sample_values' not in st.session_state:
-        st.session_state.create_sample_values = {}
+        st.session_state.create_sample_values = {} # Dicionário {variavel: valor_teste}
     if 'create_test_result' not in st.session_state:
-        st.session_state.create_test_result = None
+        st.session_state.create_test_result = None # Resultado do teste da fórmula
     if 'show_variable_section' not in st.session_state:
-        st.session_state.show_variable_section = False
+        st.session_state.show_variable_section = False # Controla a exibição da seção de variáveis/teste
 
-    # Detectar variáveis na fórmula atual do input (antes do formulário)
-    # Acessamos o valor do input usando a chave do formulário e a chave do input.
-    # Usamos .get() para evitar KeyError na primeira execução antes do form_key existir.
+    # --- Lógica de Detecção de Variáveis (Executada no início de cada rerun) ---
+    # Acessamos o valor ATUAL do input de fórmula usando a chave do formulário e a chave do input.
+    # Usamos .get() para evitar KeyError na primeira execução antes do form_key existir no session_state.
+    # O valor do input só estará no session_state APÓS a primeira submissão do formulário.
+    # Para a primeira renderização, ou se o formulário ainda não foi submetido, o valor será "".
     current_formula_input_value = st.session_state.get(form_key, {}).get(f"{form_key}_formula", "")
+    # Detecta variáveis (letras maiúsculas ou minúsculas) na fórmula atual
     current_detected_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', current_formula_input_value))))
 
-    # Atualizar estados de variáveis se a fórmula mudou
-    # Se as variáveis detectadas mudaram, resetamos os estados dinâmicos e ocultamos a seção de variáveis
+    # --- Atualizar Estados de Variáveis se a Fórmula Mudou ---
+    # Compara as variáveis detectadas AGORA com as variáveis salvas no estado da sessão.
+    # Se forem diferentes, significa que o usuário alterou a fórmula no input.
     if st.session_state.create_current_formula_vars != current_detected_vars:
          st.session_state.create_current_formula_vars = current_detected_vars
+         # Ao detectar novas variáveis, tentamos manter as descrições existentes para as variáveis que ainda existem.
          new_var_descriptions = {}
          for var in current_detected_vars:
+              # Mantém a descrição antiga se existir, caso contrário, usa string vazia
               new_var_descriptions[var] = st.session_state.create_current_var_descriptions.get(var, "")
          st.session_state.create_current_var_descriptions = new_var_descriptions
+
+         # Similarmente, tentamos manter os valores de teste existentes para as variáveis que ainda existem.
          new_sample_values = {}
          for var in current_detected_vars:
+              # Mantém o valor de teste antigo se existir, caso contrário, usa 0.0
               new_sample_values[var] = st.session_state.create_sample_values.get(var, 0.0)
          st.session_state.create_sample_values = new_sample_values
+
          st.session_state.create_test_result = None # Limpa resultado do teste se a fórmula muda
-         st.session_state.show_variable_section = False # Oculta a seção de variáveis
+         # NÃO resetamos show_variable_section aqui. Se a seção estava visível, ela deve continuar visível
+         # para que o usuário possa ver os novos inputs de variáveis.
 
-
-    # Formulário principal para criar indicador
+    # --- Formulário Principal para Criar Indicador ---
+    # Todos os inputs e botões que devem ser submetidos juntos devem estar DENTRO deste bloco.
     with st.form(key=form_key):
         # Campos básicos do indicador
         nome = st.text_input("Nome do Indicador", key=f"{form_key}_nome")
         objetivo = st.text_area("Objetivo", key=f"{form_key}_objetivo")
         unidade = st.text_input("Unidade do Resultado", placeholder="Ex: %", key=f"{form_key}_unidade")
+        # O input de fórmula usa a chave do formulário para que seu valor seja salvo no session_state
         formula = st.text_input(
             "Fórmula de Cálculo (Use letras para variáveis, ex: A+B/C)",
             placeholder="Ex: (DEMISSOES / TOTAL_FUNCIONARIOS) * 100",
             key=f"{form_key}_formula"
         )
 
-        # Botão para carregar a fórmula e detectar variáveis (dentro do form, SEM key)
-        # O estado de clique será retornado para a variável local 'load_formula_button'
+        # Botão para carregar a fórmula e detectar variáveis (dentro do form)
+        # O estado de clique será retornado para a variável local 'load_formula_button' APÓS a submissão.
         load_formula_button = st.form_submit_button("⚙️ Carregar Fórmula e Variáveis")
 
         # Seção para Variáveis e Teste da Fórmula (exibida condicionalmente)
         st.markdown("---")
         st.subheader("Variáveis da Fórmula e Teste")
 
-        # Exibe a seção APENAS se show_variable_section for True
+        # Exibe a seção APENAS se show_variable_section for True no estado da sessão
         if st.session_state.show_variable_section:
             # Verifica se há variáveis detectadas para exibir os inputs
             if st.session_state.create_current_formula_vars:
@@ -943,46 +957,46 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                 st.write("Defina a descrição e insira valores de teste para cada variável:")
 
                 # Inputs para descrição e valores de teste (dentro do form)
+                # Usamos colunas para organizar, limitando a 3 colunas para melhor visualização
                 cols_desc = st.columns(min(3, len(st.session_state.create_current_formula_vars)))
                 cols_sample = st.columns(min(3, len(st.session_state.create_current_formula_vars)))
 
-                new_var_descriptions = {}
-                new_sample_values = {}
-
+                # Iteramos sobre as variáveis detectadas no estado da sessão
                 for i, var in enumerate(st.session_state.create_current_formula_vars):
-                    col_idx = i % len(cols_desc)
+                    col_idx = i % len(cols_desc) # Calcula o índice da coluna para esta variável
                     with cols_desc[col_idx]:
-                        new_var_descriptions[var] = st.text_input(
+                        # Input de descrição, pré-preenchido com o valor do estado da sessão
+                        # A chave do input inclui o nome da variável e a chave do formulário para ser única
+                        st.text_input(
                             f"Descrição para '{var}'",
                             value=st.session_state.create_current_var_descriptions.get(var, ""),
                             placeholder=f"Ex: {var} - Número de Atendimentos",
                             key=f"{form_key}_desc_input_{var}" # Chave única para este input DENTRO do form
                         )
                     with cols_sample[col_idx]:
-                         new_sample_values[var] = st.number_input(
+                         # Input de valor de teste, pré-preenchido com o valor do estado da sessão
+                         # A chave do input inclui o nome da variável e a chave do formulário para ser única
+                         st.number_input(
                              f"Valor de Teste para '{var}'",
                              value=float(st.session_state.create_sample_values.get(var, 0.0)),
-                             step=0.01,
-                             format="%.2f",
+                             step=0.01, # Permite valores decimais
+                             format="%.2f", # Formata exibição com 2 casas decimais
                              key=f"{form_key}_sample_input_{var}" # Chave única para o input DENTRO do form
                          )
 
-                # Atualiza estados dinâmicos com valores dos inputs do form
-                # Estes estados serão usados na lógica fora do form quando o botão for clicado
-                st.session_state.create_current_var_descriptions = new_var_descriptions
-                st.session_state.create_sample_values = new_sample_values
-
-                # Botão para testar a fórmula (dentro do form, SEM key)
-                # O estado de clique será retornado para a variável local 'test_formula_button'
+                # Botão para testar a fórmula (dentro do form)
+                # O estado de clique será retornado para a variável local 'test_formula_button' APÓS a submissão.
                 test_formula_button = st.form_submit_button("✨ Testar Fórmula")
 
-                # Exibir resultado do teste
+                # Exibir resultado do teste se estiver no estado da sessão
                 if st.session_state.create_test_result is not None:
+                     # Acessa o valor atual da unidade do input do formulário via session_state
                      current_unidade_input_value = st.session_state.get(form_key, {}).get(f"{form_key}_unidade", "")
+                     # Formata o resultado com 2 casas decimais e adiciona a unidade
                      st.markdown(f"**Resultado do Teste:** **{st.session_state.create_test_result:.2f}{current_unidade_input_value}**")
 
             else:
-                 # Caso show_variable_section seja True, mas não haja variáveis detectadas
+                 # Caso show_variable_section seja True, mas não haja variáveis detectadas na fórmula atual
                  st.warning("Nenhuma variável (letras) encontrada na fórmula. O resultado será um valor fixo.")
                  # Garante que os estados dinâmicos relacionados a variáveis estão limpos
                  st.session_state.create_current_formula_vars = []
@@ -1004,31 +1018,40 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
         # Outros campos do indicador (dentro do form)
         st.markdown("---")
+        # Input de meta, limitado a 2 casas decimais
         meta = st.number_input("Meta", step=0.01, format="%.2f", key=f"{form_key}_meta")
         comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"], key=f"{form_key}_comparacao")
         tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS, key=f"{form_key}_tipo_grafico")
         responsavel = st.selectbox("Setor Responsável", SETORES, key=f"{form_key}_responsavel")
 
-        # Botão principal de criação (dentro do form, SEM key)
-        # O estado de clique será retornado para a variável local 'create_button'
+        # Botão principal de criação (dentro do form)
+        # O estado de clique será retornado para a variável local 'create_button' APÓS a submissão.
         create_button = st.form_submit_button("➕ Criar")
 
     # --- Lógica para lidar com os botões de submissão (FORA do formulário) ---
     # As variáveis locais load_formula_button, test_formula_button, create_button
     # são True apenas no rerun causado pelo clique no respectivo botão.
 
+    # Lógica executada quando o botão "Carregar Fórmula e Variáveis" é clicado
     if load_formula_button:
-        # Lógica para carregar a fórmula e detectar variáveis
         # A detecção de variáveis já ocorreu ANTES do formulário com base no valor atual do input.
         # Os estados dinâmicos (create_current_formula_vars, create_current_var_descriptions, create_sample_values)
-        # já foram atualizados.
-        # Agora, ativamos a exibição da seção de variáveis/teste E FORÇAMOS UM RERUN.
+        # já foram atualizados no início do rerun se a fórmula mudou.
+        # Agora, ativamos a exibição da seção de variáveis/teste E FORÇAMOS UM RERUN
+        # para que o Streamlit re-renderize a página com a seção visível e os inputs corretos.
         formula_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_formula", "")
         if formula_submitted:
              st.session_state.show_variable_section = True
              st.session_state.create_test_result = None # Limpa resultado do teste anterior
+             # Atualiza as descrições e valores de teste no estado da sessão com os valores ATUAIS dos inputs do form
+             # (que foram submetidos pelo clique do botão)
+             for var in st.session_state.create_current_formula_vars:
+                  st.session_state.create_current_var_descriptions[var] = st.session_state.get(f"{form_key}_desc_input_{var}", "")
+                  st.session_state.create_sample_values[var] = st.session_state.get(f"{form_key}_sample_input_{var}", 0.0)
+
              st.rerun() # FORÇA RERUN para exibir a seção imediatamente
         else:
+             # Se a fórmula estiver vazia, oculta a seção e limpa os estados relacionados
              st.session_state.show_variable_section = False
              st.session_state.create_current_formula_vars = []
              st.session_state.create_current_var_descriptions = {}
@@ -1038,45 +1061,69 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
              # Não precisa de rerun aqui, pois o clique no botão já causou um.
 
 
+    # Lógica executada quando o botão "Testar Fórmula" é clicado
     elif test_formula_button:
          # Lógica para testar a fórmula com valores de teste
          # Acessa a fórmula do input do formulário via session_state
          formula_str = st.session_state.get(form_key, {}).get(f"{form_key}_formula", "")
-         # Acessa os valores de teste dos estados dinâmicos (que foram atualizados pelos inputs do form)
-         variable_values = st.session_state.create_sample_values
-         unidade_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_unidade", "")
+         # Acessa os valores de teste dos inputs do formulário via session_state
+         variable_values = {}
+         for var in st.session_state.create_current_formula_vars:
+              variable_values[var] = st.session_state.get(f"{form_key}_sample_input_{var}", 0.0)
+
+         # Atualiza o estado da sessão com os valores de teste submetidos
+         st.session_state.create_sample_values = variable_values
 
          if not formula_str:
               st.warning("⚠️ Por favor, insira uma fórmula para testar.")
               st.session_state.create_test_result = None
-         elif not variable_values and formula_str:
+         elif not variable_values and formula_str: # Testar fórmula sem variáveis (valor fixo)
               try:
+                  # Tenta avaliar a fórmula como um valor fixo
                   calculated_result = float(sympify(formula_str))
                   st.session_state.create_test_result = calculated_result
-              except (SympifyError, ValueError, TypeError) as e:
-                  st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe ou se todas as variáveis foram inseridas. Detalhes: {e}")
+                  # O resultado será exibido no próximo rerun, após a atualização do estado
+              except (SympifyError, ValueError) as e:
+                  st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
                   st.session_state.create_test_result = None
               except Exception as e:
                    st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
                    st.session_state.create_test_result = None
-         elif variable_values:
+         elif variable_values: # Testar fórmula com variáveis
               try:
+                  # Criar objetos simbólicos para as variáveis
                   var_symbols = symbols(list(variable_values.keys()))
+                  # Parsear a fórmula
                   expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
+
+                  # Substituir os símbolos pelos valores numéricos
+                  # Garantir que os valores são numéricos antes de substituir
                   subs_dict = {symbols(var): float(value) for var, value in variable_values.items()}
                   calculated_result = float(expr.subs(subs_dict))
+
                   st.session_state.create_test_result = calculated_result
-              except (SympifyError, ZeroDivisionError, ValueError, TypeError) as e:
-                  st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe ou se há divisão por zero. Detalhes: {e}")
-                  st.session_state.create_test_result = None
+                  # O resultado será exibido no próximo rerun, após a atualização do estado
+
+              except SympifyError as e:
+                  st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
+                  st.session_state.create_test_result = None # Limpa resultado calculado
+              except ZeroDivisionError:
+                  st.error("❌ Erro ao calcular a fórmula: Divisão por zero com os valores de teste fornecidos.")
+                  st.session_state.create_test_result = None # Limpa resultado calculado
               except Exception as e:
-                   st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
-                   st.session_state.create_test_result = None
+                   # Captura o erro específico e exibe uma mensagem mais amigável,
+                   # ou a mensagem original para outros erros inesperados
+                   if "cannot create 'dict_keys' instances" in str(e):
+                        st.error("❌ Erro interno ao processar as variáveis da fórmula. Verifique se as variáveis na fórmula correspondem às variáveis definidas para o indicador.")
+                   else:
+                        st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                   st.session_state.create_test_result = None # Limpa resultado calculado
 
          # Não precisamos de um rerun explícito aqui, pois clicar no botão já submeteu o form e causou um rerun.
          # O resultado do teste será exibido no próximo rerun.
 
 
+    # Lógica executada quando o botão "Criar" é clicado
     elif create_button:
         # Lógica para criar o indicador
         # Acessa os valores dos inputs do formulário via session_state
@@ -1088,8 +1135,15 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         comparacao_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_comparacao", "Maior é melhor")
         tipo_grafico_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_tipo_grafico", TIPOS_GRAFICOS[0])
         responsavel_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_responsavel", SETORES[0])
-        # Acessa as descrições das variáveis dos estados dinâmicos
-        variaveis_desc_submitted = st.session_state.create_current_var_descriptions
+
+        # Acessa as descrições das variáveis dos inputs do formulário via session_state
+        # (Estes inputs só existem se show_variable_section for True)
+        variaveis_desc_submitted = {}
+        if st.session_state.show_variable_section:
+             for var in st.session_state.create_current_formula_vars:
+                  variaveis_desc_submitted[var] = st.session_state.get(f"{form_key}_desc_input_{var}", "")
+        # Se a seção de variáveis não foi exibida, as variáveis_desc_submitted será um dicionário vazio, o que está correto.
+
 
         # Validar campos obrigatórios
         if not nome_submitted or not objetivo_submitted or not formula_submitted:
@@ -1098,55 +1152,67 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             # Validar a fórmula antes de salvar
             if formula_submitted:
                 try:
+                    # Tenta parsear a fórmula para verificar a sintaxe básica
+                    # Usa as variáveis detectadas no início do rerun
                     var_symbols = symbols(st.session_state.create_current_formula_vars)
                     sympify(formula_submitted, locals=dict(zip(st.session_state.create_current_formula_vars, var_symbols)))
-                except (SympifyError, ValueError, TypeError) as e:
+                except SympifyError as e:
                     st.error(f"❌ Erro na sintaxe da fórmula: {e}")
-                    return
+                    return # Interrompe a criação se a fórmula for inválida
                 except Exception as e:
                      st.error(f"❌ Erro inesperado ao validar a fórmula: {e}")
-                     return
+                     return # Interrompe a criação em caso de erro inesperado
+
+            # Validar se todas as variáveis detectadas têm descrição (opcional, mas boa prática)
+            # if st.session_state.create_current_formula_vars and any(desc.strip() == "" for desc in variaveis_desc_submitted.values()):
+            #      st.error("❌ Por favor, defina a descrição para todas as variáveis detectadas.")
+            #      return # Interrompe a criação se descrições estiverem faltando
 
             with st.spinner("Criando indicador..."):
                 time.sleep(0.5)
                 indicators = load_indicators(INDICATORS_FILE)
 
+                # Verificar se já existe um indicador com o mesmo nome
                 if any(ind["nome"] == nome_submitted for ind in indicators):
                     st.error(f"❌ Já existe um indicador com o nome '{nome_submitted}'.")
                 else:
+                    # Criar o novo dicionário do indicador
                     new_indicator = {
-                        "id": generate_id(),
+                        "id": generate_id(), # Gera um ID único
                         "nome": nome_submitted,
                         "objetivo": objetivo_submitted,
                         "formula": formula_submitted,
-                        "variaveis": variaveis_desc_submitted,
+                        "variaveis": variaveis_desc_submitted, # Salva as descrições das variáveis
                         "unidade": unidade_submitted,
                         "meta": meta_submitted,
                         "comparacao": comparacao_submitted,
                         "tipo_grafico": tipo_grafico_submitted,
                         "responsavel": responsavel_submitted,
-                        "data_criacao": datetime.now().isoformat(),
-                        "data_atualizacao": datetime.now().isoformat()
+                        "data_criacao": datetime.now().isoformat(), # Salva data de criação no formato ISO
+                        "data_atualizacao": datetime.now().isoformat() # Salva data de atualização no formato ISO
                     }
 
+                    # Adicionar o novo indicador à lista e salvar
                     indicators.append(new_indicator)
                     save_indicators(indicators, INDICATORS_FILE)
-                    log_indicator_action("Indicador criado", new_indicator["id"], INDICATOR_LOG_FILE)
+                    log_indicator_action("Indicador criado", new_indicator["id"], INDICATOR_LOG_FILE) # Registra a ação no log
 
                     st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
 
                     # Limpar estado do formulário e estados dinâmicos após sucesso
+                    # Isso garante que a página volte para o estado inicial para criar um novo indicador
                     if form_key in st.session_state:
-                        del st.session_state[form_key]
+                        del st.session_state[form_key] # Limpa todos os valores do formulário
                     st.session_state.create_current_formula_vars = []
                     st.session_state.create_current_var_descriptions = {}
                     st.session_state.create_sample_values = {}
                     st.session_state.create_test_result = None
                     st.session_state.show_variable_section = False # Oculta a seção de variáveis/teste
 
-                    st.rerun()
+                    st.rerun() # Força um rerun para limpar a página e mostrar a mensagem de sucesso
 
     st.markdown('</div>', unsafe_allow_html=True)
+
 
 def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE, RESULTS_FILE):
     """Mostra a página de edição de indicador com fórmula dinâmica."""
