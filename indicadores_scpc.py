@@ -2629,7 +2629,7 @@ def show_overview(INDICATORS_FILE, RESULTS_FILE):
         )
 
     # Adicionar campo de busca (mantido)
-    search_query = st.text_input("�� Buscar indicador por nome ou setor", placeholder="Digite para buscar...")
+    search_query = st.text_input("Buscar indicador por nome ou setor", placeholder="Digite para buscar...")
 
 
     # Aplicar filtros
