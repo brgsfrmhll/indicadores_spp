@@ -2016,7 +2016,7 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
             st.info(f"Visualizando indicadores do setor: {setor_filtro}")
         else:
             # Administradores e Visualizadores podem selecionar o setor
-            setores_disponiveis = ["Todos"] + list(set(ind["responsavel"] for ind in indicators))
+            setores_disponiveis = ["Todos"] + sorted(list(set(ind["responsavel"] for ind in indicators))) # NOVO: Ordenar setores
             setor_filtro = st.selectbox("Filtrar por Setor:", setores_disponiveis)
 
     with col2:
@@ -2036,7 +2036,7 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    # Resumo em cards horizontais
+    # Resumo em cards horizontais (mantido, não exibe valores formatados aqui)
     st.subheader("Resumo dos Indicadores")
 
     # Calcular estatísticas
@@ -2056,7 +2056,7 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
             df_results = df_results.sort_values("data_referencia", ascending=False)
 
             last_result = float(df_results.iloc[0]["resultado"])
-            meta = float(ind["meta"])
+            meta = float(ind.get("meta", 0.0)) # Usar .get com valor padrão
 
             if ind["comparacao"] == "Maior é melhor":
                 if last_result >= meta:
@@ -2104,7 +2104,7 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
         </div>
         """, unsafe_allow_html=True)
 
-    # Gráfico de status dos indicadores
+    # Gráfico de status dos indicadores (mantido)
     st.subheader("Status dos Indicadores")
 
     # Dados para o gráfico de pizza
@@ -2158,7 +2158,7 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
 
             # Calcular status
             try:
-                meta = float(ind["meta"])
+                meta = float(ind.get("meta", 0.0)) # Usar .get com valor padrão
                 resultado = float(last_result)
 
                 if ind["comparacao"] == "Maior é melhor":
@@ -2167,76 +2167,13 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
                     status = "Acima da Meta" if resultado <= meta else "Abaixo da Meta"
 
                 # Calcular variação percentual
-                variacao = ((resultado / meta) - 1) * 100
-                if ind["comparacao"] == "Menor é melhor":
-                    variacao = -variacao  # Inverter para exibição correta
-
-            except:
-                status = "N/A"
-                variacao = 0
-
-            # Formatar data
-            data_formatada = format_date_as_month_year(last_date)
-
-        else:
-            last_result = "N/A"
-            data_formatada = "N/A"
-            status = "Sem Resultados"
-            variacao = 0
-
-        # Adicionar à lista de dados
-        indicator_data.append({
-            "indicator": ind,
-            "last_result": last_result,
-            "data_formatada": data_formatada,
-            "status": status,
-            "variacao": variacao,
-            "results": ind_results
-        })
-
-    # Aplicar filtro de status se necessário
-    if status_filtro and "Todos" not in status_filtro:
-        indicator_data = [d for d in indicator_data if d["status"] in status_filtro]
-
-    # Se não houver indicadores após filtro de status
-    if not indicator_data:
-        st.warning("Nenhum indicador encontrado com os filtros selecionados.")
-        st.markdown('</div>', unsafe_allow_html=True)
-        return
-
-    # Mostrar cada indicador individualmente em uma única coluna
-    st.subheader("Indicadores")
-
-    # Aplicar filtro de status aos indicadores
-    indicator_data = []
-
-    for ind in filtered_indicators:
-        # Obter resultados do indicador
-        ind_results = [r for r in results if r["indicator_id"] == ind["id"]]
-
-        if ind_results:
-            # Pegar o resultado mais recente
-            df_results = pd.DataFrame(ind_results)
-            df_results["data_referencia"] = pd.to_datetime(df_results["data_referencia"])
-            df_results = df_results.sort_values("data_referencia", ascending=False)
-
-            last_result = df_results.iloc[0]["resultado"]
-            last_date = df_results.iloc[0]["data_referencia"]
-
-            # Calcular status
-            try:
-                meta = float(ind["meta"])
-                resultado = float(last_result)
-
-                if ind["comparacao"] == "Maior é melhor":
-                    status = "Acima da Meta" if resultado >= meta else "Abaixo da Meta"
-                else:  # Menor é melhor
-                    status = "Acima da Meta" if resultado <= meta else "Abaixo da Meta"
-
-                # Calcular variação percentual
-                variacao = ((resultado / meta) - 1) * 100
-                if ind["comparacao"] == "Menor é melhor":
-                    variacao = -variacao  # Inverter para exibição correta
+                # NOVO: Tratar divisão por zero na variação
+                if meta != 0.
+                    variacao = ((resultado / meta) - 1) * 100
+                    if ind["comparacao"] == "Menor é melhor":
+                        variacao = -variacao  # Inverter para exibição correta
+                else:
+                    variacao = float('inf') if resultado > 0 else (float('-inf') if resultado < 0 else 0) # Representar variação infinita ou zero
 
             except:
                 status = "N/A"
@@ -2274,6 +2211,7 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
     # Mostrar cada indicador em um card individual
     for i, data in enumerate(indicator_data):
         ind = data["indicator"]
+        unidade_display = ind.get('unidade', '') # NOVO: Obter a unidade do indicador
 
         # Card para o indicador
         st.markdown(f"""
@@ -2292,26 +2230,42 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
             col1, col2, col3 = st.columns(3)
 
             with col1:
+                # NOVO: Formatar exibição da meta para 2 casas decimais e adicionar unidade
+                meta_display = f"{float(ind.get('meta', 0.0)):.2f}{unidade_display}"
                 st.markdown(f"""
                 <div style="background-color:white; padding:10px; border-radius:5px; text-align:center; border:1px solid #e0e0e0;">
                     <p style="margin:0; font-size:12px; color:#666;">Meta</p>
-                    <p style="margin:0; font-weight:bold; font-size:18px;">{ind['meta']}</p>
+                    <p style="margin:0; font-weight:bold; font-size:18px;">{meta_display}</p>
                 </div>
                 """, unsafe_allow_html=True)
 
             with col2:
                 status_color = "#26A69A" if data["status"] == "Acima da Meta" else "#FF5252"
+                # NOVO: Formatar exibição do último resultado para 2 casas decimais e adicionar unidade
+                last_result_display = f"{float(data['last_result']):.2f}{unidade_display}" if isinstance(data['last_result'], (int, float)) else "N/A"
                 st.markdown(f"""
                 <div style="background-color:white; padding:10px; border-radius:5px; text-align:center; border:1px solid #e0e0e0;">
                     <p style="margin:0; font-size:12px; color:#666;">Último Resultado</p>
-                    <p style="margin:0; font-weight:bold; font-size:18px; color:{status_color};">{data['last_result']}</p>
+                    <p style="margin:0; font-weight:bold; font-size:18px; color:{status_color};">{last_result_display}</p>
                 </div>
                 """, unsafe_allow_html=True)
 
             with col3:
+                # NOVO: Formatar exibição da variação para 2 casas decimais
                 variacao_color = "#26A69A" if (data["variacao"] >= 0 and ind["comparacao"] == "Maior é melhor") or \
                                             (data["variacao"] <= 0 and ind["comparacao"] == "Menor é melhor") else "#FF5252"
-                variacao_text = f"{data['variacao']:.2f}%" if isinstance(data['variacao'], (int, float)) else "N/A"
+                # NOVO: Tratar exibição de variação infinita
+                if data['variacao'] == float('inf'):
+                    variacao_text = "+∞%"
+                    variacao_color = "#26A69A" if ind["comparacao"] == "Maior é melhor" else "#FF5252"
+                elif data['variacao'] == float('-inf'):
+                     variacao_text = "-∞%"
+                     variacao_color = "#26A69A" if ind["comparacao"] == "Menor é melhor" else "#FF5252"
+                elif isinstance(data['variacao'], (int, float)):
+                    variacao_text = f"{data['variacao']:.2f}%"
+                else:
+                    variacao_text = "N/A"
+
                 st.markdown(f"""
                 <div style="background-color:white; padding:10px; border-radius:5px; text-align:center; border:1px solid #e0e0e0;">
                     <p style="margin:0; font-size:12px; color:#666;">Variação vs Meta</p>
@@ -2330,14 +2284,17 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
                     # Adicionar colunas de status e análise
                     df_hist["status"] = df_hist.apply(lambda row:
                                                       "Acima da Meta" if (float(row["resultado"]) >= float(
-                                                          ind["meta"]) and ind["comparacao"] == "Maior é melhor") or
+                                                          ind.get("meta", 0.0)) and ind["comparacao"] == "Maior é melhor") or
                                                                          (float(row["resultado"]) <= float(
-                                                                             ind["meta"]) and ind[
+                                                                             ind.get("meta", 0.0)) and ind[
                                                                               "comparacao"] == "Menor é melhor")
                                                       else "Abaixo da Meta", axis=1)
 
                     # Formatar para exibição - Corrigindo o erro da coluna 'observacoes'
+                    # NOVO: Formatar coluna de resultado na tabela histórica
                     df_display = df_hist[["data_referencia", "resultado", "status"]].copy()
+                    df_display["resultado"] = df_display["resultado"].apply(lambda x: f"{float(x):.2f}{unidade_display}" if isinstance(x, (int, float)) else "N/A")
+
 
                     # Verificar se a coluna 'observacao' existe no DataFrame
                     if "observacao" in df_hist.columns:
@@ -2347,7 +2304,7 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
 
                     df_display["data_referencia"] = df_display["data_referencia"].apply(
                         lambda x: x.strftime("%d/%m/%Y"))
-                    df_display.columns = ["Data de Referência", "Resultado", "Status", "Observações"]
+                    df_display.columns = ["Data de Referência", f"Resultado ({unidade_display})", "Status", "Observações"] # NOVO: Adiciona unidade ao cabeçalho da tabela
 
                     st.dataframe(df_display, use_container_width=True)
 
@@ -2374,10 +2331,10 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
                             # Cor da tendência
                             tendencia_color = "#26A69A" if (tendencia == "crescente" and ind[
                                 "comparacao"] == "Maior é melhor") or \
-                                                           (tendencia == "crescente" and ind[
+                                                           (tendencia == "decrescente" and ind[ # CORREÇÃO: Menor é melhor, decrescente é bom
                                                                "comparacao"] == "Menor é melhor") else \
                                 "#FF5252" if (tendencia == "decrescente" and ind["comparacao"] == "Maior é melhor") or \
-                                             (tendencia == "decrescente" and ind["comparacao"] == "Menor é melhor") else \
+                                             (tendencia == "crescente" and ind["comparacao"] == "Menor é melhor") else \
                                     "#FFC107"  # Estável
 
                             st.markdown(f"""
@@ -2391,54 +2348,62 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
                             st.markdown("<h4>Análise Automática</h4>", unsafe_allow_html=True)
 
                             # Gerar análise com base na tendência e status
-                            if tendencia == "crescente" and ind["comparacao"] == "Maior é melhor":
-                                st.success(
-                                    "O indicador apresenta evolução positiva, com resultados crescentes nos últimos períodos.")
-                                if float(data["last_result"]) >= float(ind["meta"]):
+                            meta_float = float(ind.get("meta", 0.0)) # Usar .get com valor padrão
+                            last_result_float = float(data["last_result"]) if isinstance(data["last_result"], (int, float)) else None
+
+                            if last_result_float is not None:
+                                if tendencia == "crescente" and ind["comparacao"] == "Maior é melhor":
                                     st.success(
-                                        "O resultado atual está acima da meta estabelecida, demonstrando bom desempenho.")
-                                else:
-                                    st.warning(
-                                        "Apesar da evolução positiva, o resultado ainda está abaixo da meta estabelecida.")
-                            elif tendencia == "decrescente" and ind["comparacao"] == "Maior é melhor":
-                                st.error(
-                                    "O indicador apresenta tendência de queda, o que é preocupante para este tipo de métrica.")
-                                if float(data["last_result"]) >= float(ind["meta"]):
-                                    st.warning(
-                                        "Embora o resultado atual ainda esteja acima da meta, a tendência de queda requer atenção.")
-                                else:
+                                        "O indicador apresenta evolução positiva, com resultados crescentes nos últimos períodos.")
+                                    if last_result_float >= meta_float:
+                                        st.success(
+                                            "O resultado atual está acima da meta estabelecida, demonstrando bom desempenho.")
+                                    else:
+                                        st.warning(
+                                            "Apesar da evolução positiva, o resultado ainda está abaixo da meta estabelecida.")
+                                elif tendencia == "decrescente" and ind["comparacao"] == "Maior é melhor":
                                     st.error(
-                                        "O resultado está abaixo da meta e com tendência de queda, exigindo ações corretivas urgentes.")
-                            elif tendencia == "crescente" and ind["comparacao"] == "Menor é melhor":
-                                st.error(
-                                    "O indicador apresenta tendência de aumento, o que é negativo para este tipo de métrica.")
-                                if float(data["last_result"]) <= float(ind["meta"]):
-                                    st.warning(
-                                        "Embora o resultado atual ainda esteja dentro da meta, a tendência de aumento requer atenção.")
-                                else:
+                                        "O indicador apresenta tendência de queda, o que é preocupante para este tipo de métrica.")
+                                    if last_result_float >= meta_float:
+                                        st.warning(
+                                            "Embora o resultado atual ainda esteja acima da meta, a tendência de queda requer atenção.")
+                                    else:
+                                        st.error(
+                                            "O resultado está abaixo da meta e com tendência de queda, exigindo ações corretivas urgentes.")
+                                elif tendencia == "crescente" and ind["comparacao"] == "Menor é melhor":
                                     st.error(
-                                        "O resultado está acima da meta e com tendência de aumento, exigindo ações corretivas urgentes.")
-                            elif tendencia == "decrescente" and ind["comparacao"] == "Menor é melhor":
-                                st.success(
-                                    "O indicador apresenta evolução positiva, com resultados decrescentes nos últimos períodos.")
-                                if float(data["last_result"]) <= float(ind["meta"]):
+                                        "O indicador apresenta tendência de aumento, o que é negativo para este tipo de métrica.")
+                                    if last_result_float <= meta_float:
+                                        st.warning(
+                                            "Embora o resultado atual ainda esteja dentro da meta, a tendência de aumento requer atenção.")
+                                    else:
+                                        st.error(
+                                            "O resultado está acima da meta e com tendência de aumento, exigindo ações corretivas urgentes.")
+                                elif tendencia == "decrescente" and ind["comparacao"] == "Menor é melhor":
                                     st.success(
-                                        "O resultado atual está dentro da meta estabelecida, demonstrando bom desempenho.")
-                                else:
-                                    st.warning(
-                                        "Apesar da evolução positiva, o resultado ainda está acima da meta estabelecida.")
-                            else:  # Estável
-                                if (float(data["last_result"]) >= float(ind["meta"]) and ind[
-                                    "comparacao"] == "Maior é melhor") or \
-                                        (float(data["last_result"]) <= float(ind["meta"]) and ind[
-                                            "comparacao"] == "Menor é melhor"):
-                                    st.info("O indicador apresenta estabilidade e está dentro da meta estabelecida.")
-                                else:
-                                    st.warning(
-                                        "O indicador apresenta estabilidade, porém está fora da meta estabelecida.")
+                                        "O indicador apresenta evolução positiva, com resultados decrescentes nos últimos períodos.")
+                                    if last_result_float <= meta_float:
+                                        st.success(
+                                            "O resultado atual está dentro da meta estabelecida, demonstrando bom desempenho.")
+                                    else:
+                                        st.warning(
+                                            "Apesar da evolução positiva, o resultado ainda está acima da meta estabelecida.")
+                                else:  # Estável
+                                    if (last_result_float >= meta_float and ind[
+                                        "comparacao"] == "Maior é melhor") or \
+                                            (last_result_float <= meta_float and ind[
+                                                "comparacao"] == "Menor é melhor"):
+                                        st.info("O indicador apresenta estabilidade e está dentro da meta estabelecida.")
+                                    else:
+                                        st.warning(
+                                            "O indicador apresenta estabilidade, porém está fora da meta estabelecida.")
+                            else:
+                                st.info("Não foi possível realizar a análise automática devido a dados de resultado inválidos.")
+
                         else:
                             st.info(
-                                "Não há dados suficientes para análise de tendência (mínimo de 3 períodos necessários).")
+                                "Não há dados suficientes para análise de tendência (mínimo de 3 períodos necessários)."
+                            )
                     else:
                         st.info("Não há dados históricos suficientes para análise de tendência.")
 
@@ -2448,7 +2413,7 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
                     # Verificar se existe análise crítica para o último resultado
                     ultimo_resultado = df_hist.iloc[0]
 
-                    # Verificar se o resultado tem análise crítica
+                    # Verificar se a análise crítica existe nos dados
                     has_analysis = False
 
                     # Verificar se a análise crítica existe nos dados
@@ -2507,10 +2472,12 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
             st.info("Este indicador ainda não possui resultados registrados.")
 
             # Mostrar meta
+            # NOVO: Formatar exibição da meta para 2 casas decimais e adicionar unidade
+            meta_display = f"{float(ind.get('meta', 0.0)):.2f}{unidade_display}"
             st.markdown(f"""
             <div style="background-color:white; padding:10px; border-radius:5px; text-align:center; border:1px solid #e0e0e0; width: 200px; margin: 10px auto;">
                 <p style="margin:0; font-size:12px; color:#666;">Meta</p>
-                <p style="margin:0; font-weight:bold; font-size:18px;">{ind['meta']}</p>
+                <p style="margin:0; font-weight:bold; font-size:18px;">{meta_display}</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -2524,16 +2491,32 @@ def show_dashboard(INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, SETORES):
 
         for data in indicator_data:
             ind = data["indicator"]
+            unidade_export = ind.get('unidade', '') # NOVO: Obter unidade para exportação
+
+            # NOVO: Formatar resultados e meta para exportação
+            last_result_export = f"{float(data['last_result']):.2f}{unidade_export}" if isinstance(data['last_result'], (int, float)) else "N/A"
+            meta_export = f"{float(ind.get('meta', 0.0)):.2f}{unidade_export}"
+
+            # NOVO: Formatar variação para exportação
+            if data['variacao'] == float('inf'):
+                variacao_export = "+Inf"
+            elif data['variacao'] == float('-inf'):
+                 variacao_export = "-Inf"
+            elif isinstance(data['variacao'], (int, float)):
+                variacao_export = f"{data['variacao']:.2f}%"
+            else:
+                variacao_export = "N/A"
+
 
             # Adicionar à lista de dados
             export_data.append({
                 "Nome": ind["nome"],
                 "Setor": ind["responsavel"],
-                "Meta": ind["meta"],
-                "Último Resultado": data["last_result"],
+                "Meta": meta_export, # NOVO: Meta formatada
+                "Último Resultado": last_result_export, # NOVO: Último resultado formatado
                 "Período": data["data_formatada"],
                 "Status": data["status"],
-                "Variação (%)": f"{data['variacao']:.2f}%" if isinstance(data['variacao'], (int, float)) else "N/A"
+                "Variação": variacao_export # NOVO: Variação formatada
             })
 
         # Criar DataFrame
@@ -2580,6 +2563,10 @@ def show_overview(INDICATORS_FILE, RESULTS_FILE):
             default=["Todos"]
         )
 
+    # Adicionar campo de busca (mantido)
+    search_query = st.text_input("�� Buscar indicador por nome ou setor", placeholder="Digite para buscar...")
+
+
     # Aplicar filtros
     filtered_indicators = indicators
 
@@ -2593,6 +2580,9 @@ def show_overview(INDICATORS_FILE, RESULTS_FILE):
         # Obter resultados para este indicador
         ind_results = [r for r in results if r["indicator_id"] == ind["id"]]
 
+        # NOVO: Obter a unidade do indicador
+        unidade_display = ind.get('unidade', '')
+
         if ind_results:
             # Ordenar por data e pegar o mais recente
             df_results = pd.DataFrame(ind_results)
@@ -2604,7 +2594,7 @@ def show_overview(INDICATORS_FILE, RESULTS_FILE):
 
             # Calcular status
             try:
-                meta = float(ind["meta"])
+                meta = float(ind.get("meta", 0.0)) # Usar .get com valor padrão
                 resultado = float(last_result)
 
                 if ind["comparacao"] == "Maior é melhor":
@@ -2613,9 +2603,14 @@ def show_overview(INDICATORS_FILE, RESULTS_FILE):
                     status = "Acima da Meta" if resultado <= meta else "Abaixo da Meta"
 
                 # Calcular variação percentual
-                variacao = ((resultado / meta) - 1) * 100
-                if ind["comparacao"] == "Menor é melhor":
-                    variacao = -variacao  # Inverter para exibição correta
+                # NOVO: Tratar divisão por zero na variação
+                if meta != 0.0.
+                    variacao = ((resultado / meta) - 1) * 100
+                    if ind["comparacao"] == "Menor é melhor":
+                        variacao = -variacao  # Inverter para exibição correta
+                else:
+                    variacao = float('inf') if resultado > 0 else (float('-inf') if resultado < 0 else 0) # Representar variação infinita ou zero
+
 
             except:
                 status = "N/A"
@@ -2624,40 +2619,71 @@ def show_overview(INDICATORS_FILE, RESULTS_FILE):
             # Formatar data
             data_formatada = format_date_as_month_year(last_date)
 
+            # NOVO: Formatar resultado e meta para exibição com unidade e 2 casas decimais
+            last_result_formatted = f"{float(last_result):.2f}{unidade_display}" if isinstance(last_result, (int, float)) else "N/A"
+            meta_formatted = f"{float(meta):.2f}{unidade_display}"
+
+            # NOVO: Formatar variação para exibição
+            if variacao == float('inf'):
+                variacao_formatted = "+Inf"
+            elif variacao == float('-inf'):
+                 variacao_formatted = "-Inf"
+            elif isinstance(variacao, (int, float)):
+                variacao_formatted = f"{variacao:.2f}%"
+            else:
+                variacao_formatted = "N/A"
+
+
         else:
-            last_result = "N/A"
+            last_result_formatted = "N/A"
             data_formatada = "N/A"
             status = "Sem Resultados"
-            variacao = 0
+            variacao_formatted = "N/A"
+            # NOVO: Formatar meta mesmo sem resultados
+            meta_formatted = f"{float(ind.get('meta', 0.0)):.2f}{unidade_display}"
+
 
         # Adicionar à lista de dados
         overview_data.append({
             "Nome": ind["nome"],
             "Setor": ind["responsavel"],
-            "Meta": ind["meta"],
-            "Último Resultado": last_result,
+            "Meta": meta_formatted, # NOVO: Usar meta formatada
+            "Último Resultado": last_result_formatted, # NOVO: Usar último resultado formatado
             "Período": data_formatada,
             "Status": status,
-            "Variação (%)": f"{variacao:.2f}%" if isinstance(variacao, (int, float)) else "N/A"
+            "Variação": variacao_formatted # NOVO: Usar variação formatada (removido o '%')
         })
 
     # Aplicar filtro de status
     if status_filtro and "Todos" not in status_filtro:
         overview_data = [d for d in overview_data if d["Status"] in status_filtro]
 
+    # Aplicar busca por nome ou setor
+    if search_query:
+        search_query_lower = search_query.lower()
+        overview_data = [d for d in overview_data if search_query_lower in d["Nome"].lower() or search_query_lower in d["Setor"].lower()]
+
+
     # Criar DataFrame
     df_overview = pd.DataFrame(overview_data)
 
     if not df_overview.empty:
         # Exibir visão geral
+        # NOVO: Renomear coluna de Variação para incluir (%)
+        df_overview.rename(columns={'Variação': 'Variação (%)'}, inplace=True)
         st.dataframe(df_overview, use_container_width=True)
 
         # Botão para exportar dados
         if st.button("📤 Exportar para Excel"):
-            download_link = get_download_link(df_overview, "visao_geral_indicadores.xlsx")
+            # Os dados em overview_data já estão formatados, então podemos usá-los diretamente
+            df_export = pd.DataFrame(overview_data)
+            # NOVO: Renomear coluna de Variação para incluir (%) na exportação também
+            df_export.rename(columns={'Variação': 'Variação (%)'}, inplace=True)
+
+            download_link = get_download_link(df_export, "visao_geral_indicadores.xlsx")
             st.markdown(download_link, unsafe_allow_html=True)
 
-        # Gráfico de resumo por setor
+        # Gráfico de resumo por setor (mantido)
         st.subheader("Resumo por Setor")
 
         # Contar indicadores por setor
@@ -2675,7 +2701,7 @@ def show_overview(INDICATORS_FILE, RESULTS_FILE):
 
         st.plotly_chart(fig_setor, use_container_width=True)
 
-        # Gráfico de status
+        # Gráfico de status (mantido)
         st.subheader("Status dos Indicadores")
 
         # Contar indicadores por status
