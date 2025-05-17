@@ -2604,7 +2604,7 @@ def show_overview(INDICATORS_FILE, RESULTS_FILE):
 
                 # Calcular variação percentual
                 # NOVO: Tratar divisão por zero na variação
-                if meta != 0.0.
+                if meta != 0.0:
                     variacao = ((resultado / meta) - 1) * 100
                     if ind["comparacao"] == "Menor é melhor":
                         variacao = -variacao  # Inverter para exibição correta
