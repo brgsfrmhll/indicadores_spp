@@ -894,9 +894,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         st.session_state.show_variable_section = False
 
     # Detectar variáveis na fórmula atual do input (antes do formulário)
-    # Isso garante que st.session_state.create_current_formula_vars esteja sempre atualizado
-    # com base no que está no input, mesmo que a seção de variáveis não esteja visível.
     # Acessamos o valor do input usando a chave do formulário e a chave do input.
+    # Usamos .get() para evitar KeyError na primeira execução antes do form_key existir.
     current_formula_input_value = st.session_state.get(form_key, {}).get(f"{form_key}_formula", "")
     current_detected_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', current_formula_input_value))))
 
@@ -928,8 +927,9 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             key=f"{form_key}_formula"
         )
 
-        # Botão para carregar a fórmula e detectar variáveis (dentro do form, COM key)
-        load_formula_button_clicked = st.form_submit_button("⚙️ Carregar Fórmula e Variáveis", key=f"{form_key}_load_button")
+        # Botão para carregar a fórmula e detectar variáveis (dentro do form, SEM key)
+        # O estado de clique será retornado para a variável local 'load_formula_button'
+        load_formula_button = st.form_submit_button("⚙️ Carregar Fórmula e Variáveis")
 
         # Seção para Variáveis e Teste da Fórmula (exibida condicionalmente)
         st.markdown("---")
@@ -956,7 +956,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                             f"Descrição para '{var}'",
                             value=st.session_state.create_current_var_descriptions.get(var, ""),
                             placeholder=f"Ex: {var} - Número de Atendimentos",
-                            key=f"{form_key}_desc_input_{var}"
+                            key=f"{form_key}_desc_input_{var}" # Chave única para este input DENTRO do form
                         )
                     with cols_sample[col_idx]:
                          new_sample_values[var] = st.number_input(
@@ -964,7 +964,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                              value=float(st.session_state.create_sample_values.get(var, 0.0)),
                              step=0.01,
                              format="%.2f",
-                             key=f"{form_key}_sample_input_{var}"
+                             key=f"{form_key}_sample_input_{var}" # Chave única para o input DENTRO do form
                          )
 
                 # Atualiza estados dinâmicos com valores dos inputs do form
@@ -972,8 +972,9 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                 st.session_state.create_current_var_descriptions = new_var_descriptions
                 st.session_state.create_sample_values = new_sample_values
 
-                # Botão para testar a fórmula (dentro do form, COM key)
-                test_formula_button_clicked = st.form_submit_button("✨ Testar Fórmula", key=f"{form_key}_test_button")
+                # Botão para testar a fórmula (dentro do form, SEM key)
+                # O estado de clique será retornado para a variável local 'test_formula_button'
+                test_formula_button = st.form_submit_button("✨ Testar Fórmula")
 
                 # Exibir resultado do teste
                 if st.session_state.create_test_result is not None:
@@ -1008,18 +1009,15 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS, key=f"{form_key}_tipo_grafico")
         responsavel = st.selectbox("Setor Responsável", SETORES, key=f"{form_key}_responsavel")
 
-        # Botão principal de criação (dentro do form, COM key)
-        create_button_clicked = st.form_submit_button("➕ Criar", key=f"{form_key}_create_button")
+        # Botão principal de criação (dentro do form, SEM key)
+        # O estado de clique será retornado para a variável local 'create_button'
+        create_button = st.form_submit_button("➕ Criar")
 
     # --- Lógica para lidar com os botões de submissão (FORA do formulário) ---
-    # Acessa o estado de clique dos botões submetidos via st.session_state[form_key][button_key]
-    # Usamos .get() com valor padrão False para evitar KeyError na primeira execução ou se o form não foi submetido
-    load_formula_button_state = st.session_state.get(form_key, {}).get(f"{form_key}_load_button", False)
-    test_formula_button_state = st.session_state.get(form_key, {}).get(f"{form_key}_test_button", False)
-    create_button_state = st.session_state.get(form_key, {}).get(f"{form_key}_create_button", False)
+    # As variáveis locais load_formula_button, test_formula_button, create_button
+    # são True apenas no rerun causado pelo clique no respectivo botão.
 
-
-    if load_formula_button_state:
+    if load_formula_button:
         # Lógica para carregar a fórmula e detectar variáveis
         # A detecção de variáveis já ocorreu ANTES do formulário com base no valor atual do input.
         # Os estados dinâmicos (create_current_formula_vars, create_current_var_descriptions, create_sample_values)
@@ -1040,7 +1038,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
              # Não precisa de rerun aqui, pois o clique no botão já causou um.
 
 
-    elif test_formula_button_state:
+    elif test_formula_button:
          # Lógica para testar a fórmula com valores de teste
          # Acessa a fórmula do input do formulário via session_state
          formula_str = st.session_state.get(form_key, {}).get(f"{form_key}_formula", "")
@@ -1079,7 +1077,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
          # O resultado do teste será exibido no próximo rerun.
 
 
-    elif create_button_state:
+    elif create_button:
         # Lógica para criar o indicador
         # Acessa os valores dos inputs do formulário via session_state
         nome_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_nome", "")
