@@ -16,6 +16,9 @@ from cryptography.fernet import Fernet
 from pathlib import Path  # Adicione esta linha
 from sympy import symbols, sympify, SympifyError # Para cálculo seguro e detecção de símbolos
 
+SETORES = ["RH", "Financeiro", "Operações", "Marketing", "Comercial", "TI", "Logística", "Produção"]
+TIPOS_GRAFICOS = ["Linha", "Barra", "Pizza", "Área", "Dispersão"]
+
 DATA_DIR = "data"
 INDICATORS_FILE = os.path.join(DATA_DIR, "indicators.json")
 RESULTS_FILE = os.path.join(DATA_DIR, "results.json")
@@ -900,11 +903,13 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     # --- Campos do indicador (alguns dentro, outros fora do form) ---
 
     # Campos básicos do indicador (fora do form para permitir o botão "Carregar" externo)
+    # Estes inputs serão limpos removendo suas chaves do session_state
     nome = st.text_input("Nome do Indicador", key="create_nome_input")
     objetivo = st.text_area("Objetivo", key="create_objetivo_input")
     unidade = st.text_input("Unidade do Resultado", placeholder="Ex: %", key="create_unidade_input")
 
     # Campo da fórmula (fora do form para ser lido pelo botão externo)
+    # Este input será limpo removendo sua chave do session_state
     formula = st.text_input(
         "Fórmula de Cálculo (Use letras para variáveis, ex: A+B/C)",
         placeholder="Ex: (DEMISSOES / TOTAL_FUNCIONARIOS) * 100",
@@ -1088,8 +1093,9 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         # Limitar input de meta a 2 casas decimais
         meta = st.number_input("Meta", step=0.01, format="%.2f", key=f"{form_key}_meta")
         comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"], key=f"{form_key}_comparacao")
-        tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS, key=f"{form_key}_tipo_grafico")
-        responsavel = st.selectbox("Setor Responsável", SETORES, key=f"{form_key}_responsavel")
+        # Adicionado verificação se as listas não estão vazias antes de acessar o índice 0
+        tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS, key=f"{form_key}_tipo_grafico", index=0 if TIPOS_GRAFICOS else 0)
+        responsavel = st.selectbox("Setor Responsável", SETORES, key=f"{form_key}_responsavel", index=0 if SETORES else 0)
 
         # Botão principal de criação (dentro do form principal)
         create_button = st.form_submit_button("➕ Criar")
@@ -1108,8 +1114,10 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         # Acessa os valores dos inputs DENTRO do form principal via session_state (usando a chave do form)
         meta_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_meta", 0.0)
         comparacao_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_comparacao", "Maior é melhor")
-        tipo_grafico_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_tipo_grafico", TIPOS_GRAFICOS[0])
-        responsavel_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_responsavel", SETORES[0])
+        # Adicionado verificação se as listas não estão vazias antes de acessar o índice 0
+        tipo_grafico_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_tipo_grafico", TIPOS_GRAFICOS[0] if TIPOS_GRAFICOS else "")
+        responsavel_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_responsavel", SETORES[0] if SETORES else "")
+
 
         # Acessa as descrições das variáveis dos estados dinâmicos (atualizados pelo form de teste ou botão carregar)
         variaveis_desc_submitted = st.session_state.create_current_var_descriptions
@@ -1164,28 +1172,25 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
                     st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
 
-                    # Limpar estado do formulário e estados dinâmicos após sucesso
-                    # Limpa os inputs externos
-                    st.session_state["create_nome_input"] = ""
-                    st.session_state["create_objetivo_input"] = ""
-                    st.session_state["create_unidade_input"] = ""
-                    st.session_state["create_formula_input"] = ""
+                    # --- CORREÇÃO: Limpar estado do formulário e estados dinâmicos após sucesso ---
+                    # Limpa os inputs externos removendo suas chaves do session_state
+                    # Use del st.session_state[...]
+                    if "create_nome_input" in st.session_state:
+                        del st.session_state["create_nome_input"]
+                    if "create_objetivo_input" in st.session_state:
+                        del st.session_state["create_objetivo_input"]
+                    if "create_unidade_input" in st.session_state:
+                        del st.session_state["create_unidade_input"]
+                    if "create_formula_input" in st.session_state:
+                        del st.session_state["create_formula_input"]
 
-                    # Limpa os inputs dentro do form principal (acessando via chave do form)
-                    # É importante verificar se a chave do formulário existe antes de tentar acessar seus elementos
+                    # Limpa os inputs dentro do form principal removendo sua chave do session_state
+                    # Deletar a chave do formulário é a forma padrão de resetar widgets dentro dele
                     if form_key in st.session_state:
-                        if f"{form_key}_meta" in st.session_state[form_key]:
-                            st.session_state[form_key][f"{form_key}_meta"] = 0.0
-                        if f"{form_key}_comparacao" in st.session_state[form_key]:
-                            st.session_state[form_key][f"{form_key}_comparacao"] = "Maior é melhor"
-                        # Verifica se as listas SETORES e TIPOS_GRAFICOS não estão vazias antes de acessar o índice 0
-                        if f"{form_key}_tipo_grafico" in st.session_state[form_key]:
-                            st.session_state[form_key][f"{form_key}_tipo_grafico"] = TIPOS_GRAFICOS[0] if TIPOS_GRAFICOS else ""
-                        if f"{form_key}_responsavel" in st.session_state[form_key]:
-                            st.session_state[form_key][f"{form_key}_responsavel"] = SETORES[0] if SETORES else ""
-
+                         del st.session_state[form_key]
 
                     # Limpa os estados dinâmicos relacionados à fórmula e teste
+                    # Estes não são chaves de widget, então a atribuição para o valor padrão ou limpeza da lista/dict está correta.
                     st.session_state.create_current_formula_vars = []
                     st.session_state.create_current_var_descriptions = {}
                     st.session_state.create_sample_values = {}
@@ -1193,7 +1198,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     st.session_state.show_variable_section = False # Oculta a seção de variáveis/teste
                     st.session_state.formula_loaded = False # Reseta o estado de fórmula carregada
 
-                    # Não é estritamente necessário limpar os inputs do formulário de teste explicitamente aqui,
+                    # Não é necessário limpar explicitamente os inputs do formulário de teste,
                     # pois a seção inteira (que contém o formulário de teste) será ocultada
                     # e os estados dinâmicos (create_current_var_descriptions, create_sample_values)
                     # que inicializam esses inputs já foram limpos.
