@@ -1448,7 +1448,8 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
 
                             try:
                                 # Criar objetos simbólicos para as variáveis
-                                var_symbols = symbols(variable_values.keys())
+                                # CORREÇÃO: Converter dict_keys para list
+                                var_symbols = symbols(list(variable_values.keys()))
                                 # Parsear a fórmula
                                 expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
 
@@ -1468,9 +1469,14 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                                 st.error("❌ Erro ao calcular a fórmula: Divisão por zero.")
                                 st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa resultado calculado
                             except Exception as e:
-                                st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                                # Captura o erro específico e exibe uma mensagem mais amigável,
+                                # ou a mensagem original para outros erros inesperados
+                                if "cannot create 'dict_keys' instances" in str(e):
+                                     st.error("❌ Erro interno ao processar as variáveis da fórmula. Verifique se as variáveis na fórmula correspondem às variáveis definidas para o indicador.")
+                                else:
+                                     st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
                                 st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"] = None # Limpa resultado calculado
-
+                                
                         # Exibir o resultado calculado se estiver no estado da sessão
                         if st.session_state.get(f"calculated_result_{selected_indicator['id']}_{selected_period_str}") is not None:
                              calculated_result = st.session_state[f"calculated_result_{selected_indicator['id']}_{selected_period_str}"]
