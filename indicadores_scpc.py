@@ -878,23 +878,14 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     # --- Gerenciar o estado do formulário e variáveis dinâmicas em chaves de sessão separadas ---
     form_key = "create_indicator_form"
 
-    # Inicializar estado do formulário (para valores iniciais na primeira carga ou após reset)
-    # Streamlit gerencia o estado do formulário automaticamente após a submissão
-    # se a chave existir. Inicializamos APENAS se a chave não estiver presente.
-    if form_key not in st.session_state:
-        st.session_state[form_key] = {
-            'nome': '',
-            'objetivo': '',
-            'formula': '',
-            'unidade': '',
-            'meta': 0.0,
-            'comparacao': 'Maior é melhor',
-            'tipo_grafico': TIPOS_GRAFICOS[0],
-            'responsavel': SETORES[0],
-        }
+    # REMOVER: Não inicialize st.session_state[form_key] explicitamente.
+    # Streamlit gerencia o estado do formulário automaticamente.
+    # if form_key not in st.session_state:
+    #     st.session_state[form_key] = { ... }
 
     # Inicializar estado para variáveis dinâmicas (fora do dicionário do formulário)
     # Estes estados são atualizados dinamicamente conforme o usuário digita a fórmula.
+    # Estes *podem* ser inicializados explicitamente, pois NÃO são a chave do formulário.
     if 'create_current_formula_vars' not in st.session_state:
         st.session_state.create_current_formula_vars = []
     if 'create_current_var_descriptions' not in st.session_state:
@@ -910,12 +901,15 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     # Acessa o valor atual do input 'formula' através da chave do widget no session_state
     # Usa .get() com valor padrão para evitar erro na primeira execução antes do widget existir
     # A chave do input 'formula' dentro do formulário é f"{form_key}_formula"
+    # Nota: Na primeira execução, st.session_state.get(f"{form_key}_formula", "") retornará ""
+    # porque a chave do formulário ainda não foi populada pelo Streamlit. Isso é esperado.
     current_formula_input_value = st.session_state.get(f"{form_key}_formula", "")
 
     # Detectar variáveis automaticamente sempre que a fórmula muda no input
     current_detected_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', current_formula_input_value))))
 
     # Atualizar o estado da sessão para variáveis dinâmicas se a fórmula mudou
+    # Esta lógica está correta, pois atualiza estados *separados* do estado do formulário.
     if st.session_state.create_last_formula_for_vars != current_formula_input_value:
          st.session_state.create_current_formula_vars = current_detected_vars
          # Tentar manter descrições existentes para variáveis que ainda existem
@@ -936,7 +930,10 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     # Streamlit gerencia o estado dos inputs dentro deste formulário usando a chave 'form_key'
     with st.form(key=form_key):
         # Inputs do formulário - Usam chaves únicas. Streamlit carrega/salva automaticamente
-        # em st.session_state[form_key][chave_do_input]
+        # em st.session_state[form_key][chave_do_input].
+        # Para uma página de CRIAÇÃO, os valores iniciais padrão dos widgets (vazio, 0, primeira opção)
+        # são geralmente o que queremos. Não precisamos definir 'value' ou 'index' explicitamente
+        # a menos que um valor inicial *não padrão* seja necessário.
         nome = st.text_input("Nome do Indicador", key=f"{form_key}_nome")
         objetivo = st.text_area("Objetivo", key=f"{form_key}_objetivo")
         unidade = st.text_input("Unidade do Resultado", placeholder="Ex: %", key=f"{form_key}_unidade")
@@ -964,7 +961,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             for i, var in enumerate(st.session_state.create_current_formula_vars):
                 col_idx = i % len(cols_desc)
                 with cols_desc[col_idx]:
-                    # Usar a descrição existente do estado da sessão dinâmico
+                    # Usar a descrição existente do estado da sessão dinâmico como valor inicial
                     st.session_state.create_current_var_descriptions[var] = st.text_input(
                         f"Descrição para '{var}'",
                         value=st.session_state.create_current_var_descriptions.get(var, ""),
@@ -972,7 +969,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                         key=f"{form_key}_desc_input_{var}" # Chave única
                     )
                 with cols_sample[col_idx]:
-                     # Usar o valor de teste existente do estado da sessão dinâmico
+                     # Usar o valor de teste existente do estado da sessão dinâmico como valor inicial
                      st.session_state.create_sample_values[var] = st.number_input(
                          f"Valor de Teste para '{var}'",
                          value=float(st.session_state.create_sample_values.get(var, 0.0)),
@@ -1003,7 +1000,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
 
         # Outros campos do indicador - Usam chaves únicas. Streamlit carrega/salva automaticamente
-        # em st.session_state[form_key][chave_do_input]
+        # em st.session_state[form_key][chave_do_input].
+        # Usando defaults padrão do widget (0.0 para number_input, primeiro item para selectbox)
         meta = st.number_input("Meta", step=0.01, format="%.2f", key=f"{form_key}_meta")
         comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"], key=f"{form_key}_comparacao")
         tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS, key=f"{form_key}_tipo_grafico")
@@ -1100,12 +1098,11 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             if formula:
                 try:
                     # Tenta parsear a fórmula para verificar a sintaxe básica
-                    # Precisa fornecer locals para sympify se variáveis são esperadas
                     var_symbols = symbols(st.session_state.create_current_formula_vars) # Usa as variáveis detectadas dinamicamente
                     sympify(formula, locals=dict(zip(st.session_state.create_current_formula_vars, var_symbols)))
                 except SympifyError as e:
                     st.error(f"❌ Erro na sintaxe da fórmula: {e}")
-                    # Não prossegue com a criação se a fórmula for inválida
+                                        # Não prossegue com a criação se a fórmula for inválida
                     return
                 except Exception as e:
                      st.error(f"❌ Erro inesperado ao validar a fórmula: {e}")
@@ -1153,7 +1150,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     # --- CORREÇÃO: Limpar estado do formulário e estados dinâmicos após a criação bem-sucedida ---
                     # A maneira correta de resetar um formulário é DELETAR a chave do formulário do session_state.
                     # Na próxima execução (após o rerun), a lógica de inicialização do formulário
-                    # (if form_key not in st.session_state) será executada, definindo os valores iniciais.
+                    # (que agora não inicializa o dicionário, mas permite que os widgets usem seus defaults)
+                    # será executada, definindo os valores iniciais (vazios/padrão).
                     if form_key in st.session_state:
                         del st.session_state[form_key]
 
@@ -1167,7 +1165,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     st.rerun() # Recarrega a página para limpar o formulário
 
     st.markdown('</div>', unsafe_allow_html=True)
-    
+
+
 def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE, RESULTS_FILE):
     """Mostra a página de edição de indicador com fórmula dinâmica."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
