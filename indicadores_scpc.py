@@ -863,7 +863,6 @@ def show_login_page():
         st.markdown(
             "<p style='text-align: center; font-size: 12px; color: #78909C; margin-top: 30px;'>© 2025 Portal de Indicadores - Santa Casa</p>",
             unsafe_allow_html=True)
-
 def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE):
     """Mostra a página de criação de indicador com fórmula dinâmica e teste."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
@@ -890,7 +889,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             'tipo_grafico': TIPOS_GRAFICOS[0],
             'responsavel': SETORES[0],
             'current_formula_vars': [], # Variáveis detectadas
-            'current_var_descriptions': {}, # Descrições das variáveis
+            'current_var_descriptions': {}, # Dicionário {variavel: descricao}
             'sample_values': {}, # Valores de teste para as variáveis
             'test_result': None, # Resultado do teste da fórmula
             'last_formula_for_vars': '' # Para rastrear mudanças na fórmula e re-detectar
@@ -937,6 +936,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
              form_state['test_result'] = None # Limpa resultado do teste se a fórmula muda
              form_state['last_formula_for_vars'] = formula # Atualiza o rastreador
 
+        # --- CORREÇÃO: Inicializar test_button_clicked antes do bloco condicional ---
+        test_button_clicked = False
 
         if form_state['current_formula_vars']:
             st.info(f"Variáveis detectadas na fórmula: {', '.join(form_state['current_formula_vars'])}")
@@ -977,11 +978,6 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             # Botão para testar a fórmula (dentro do formulário)
             test_button_clicked = st.form_submit_button("✨ Testar Fórmula")
 
-            # Exibir o resultado do teste se estiver no estado da sessão
-            if form_state['test_result'] is not None:
-                 # NOVO: Formatar resultado do teste para 2 casas decimais e adicionar unidade
-                 st.markdown(f"**Resultado do Teste:** **{form_state['test_result']:.2f}{unidade}**")
-
 
         else:
             st.warning("Nenhuma variável (letras) encontrada na fórmula. O resultado será um valor fixo.")
@@ -989,6 +985,12 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             form_state['current_var_descriptions'] = {}
             form_state['sample_values'] = {}
             form_state['test_result'] = None # Limpa resultado do teste
+
+
+        # Exibir o resultado do teste se estiver no estado da sessão (movido para fora do if current_formula_vars)
+        if form_state['test_result'] is not None:
+             # NOVO: Formatar resultado do teste para 2 casas decimais e adicionar unidade
+             st.markdown(f"**Resultado do Teste:** **{form_state['test_result']:.2f}{unidade}**")
 
 
         # Outros campos do indicador
@@ -1141,6 +1143,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     st.rerun() # Recarrega a página para limpar o formulário
 
     st.markdown('</div>', unsafe_allow_html=True)
+
 
 def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE, RESULTS_FILE):
     """Mostra a página de edição de indicador com fórmula dinâmica."""
