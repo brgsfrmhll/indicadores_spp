@@ -1080,8 +1080,14 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
              # Limpa os valores de variáveis ao mudar de indicador
              st.session_state.current_variable_values = {}
 
+        # --- NOVO: Estado para gerenciar a confirmação de exclusão ---
+        delete_state_key = f"delete_state_{selected_indicator['id']}"
+        if delete_state_key not in st.session_state:
+            st.session_state[delete_state_key] = None # Pode ser None, 'confirming', 'deleting'
+
 
         # Formulário para editar indicador
+        # Usamos uma chave única para o formulário para que ele seja re-renderizado corretamente
         with st.form(key=f"edit_form_{selected_indicator['id']}"):
             nome = st.text_input("Nome do Indicador", value=selected_indicator["nome"])
             objetivo = st.text_area("Objetivo", value=selected_indicator["objetivo"])
@@ -1165,15 +1171,14 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
             )
 
             with col1:
+                # Botão Salvar - Sem 'key' dentro do form
                 submit = st.form_submit_button("💾 Salvar")
             with col3:
-                # Usar uma chave única para o botão de exclusão
-                delete = st.form_submit_button("🗑️ Excluir", type="secondary", key=f"delete_btn_{selected_indicator['id']}")
-                if delete:
-                    st.session_state[f"deleting_indicator_{selected_indicator['id']}"] = True
+                # Botão Excluir - Sem 'key' dentro do form
+                delete_button_clicked = st.form_submit_button("��️ Excluir", type="secondary") # REMOVIDO O ARGUMENTO 'key'
 
-
-            if submitted:
+            # --- Lógica após a submissão do formulário ---
+            if submit:
                 # Validar a fórmula antes de salvar
                 if formula:
                     try:
@@ -1227,43 +1232,51 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
                 else:
                     st.warning("⚠️ Por favor, preencha todos os campos obrigatórios (Nome, Objetivo, Fórmula).")
 
-        # Bloco para exclusão (mantido como estava)
-        if st.session_state.get(f"deleting_indicator_{selected_indicator['id']}", False):
+            # --- NOVO: Lógica para iniciar a confirmação de exclusão (fora do form) ---
+            # Se o botão de exclusão dentro do formulário foi clicado, definimos o estado para 'confirming'
+            if delete_button_clicked:
+                 st.session_state[delete_state_key] = 'confirming'
+                 st.rerun() # Rerun para exibir a mensagem de confirmação fora do formulário
+
+
+        # --- NOVO: Bloco de confirmação de exclusão (fora do form) ---
+        # Este bloco só é exibido se o estado for 'confirming'
+        if st.session_state.get(delete_state_key) == 'confirming':
             st.warning(f"Tem certeza que deseja excluir o indicador '{selected_indicator['nome']}'?")
             col1, col2 = st.columns(2)
             with col1:
+                # Botão Sim, Excluir - FORA do form, PRECISA de 'key'
                 if st.button("✅ Sim, Excluir", key=f"confirm_delete_{selected_indicator['id']}"):
-                    # Excluir indicador
-                    delete_indicator(selected_indicator["id"], INDICATORS_FILE, RESULTS_FILE, INDICATOR_LOG_FILE)
-                    st.success(f"Indicador '{selected_indicator['nome']}' excluído com sucesso!")
-
-                    # Remover o indicador da lista
-                    indicators = [ind for ind in indicators if ind["id"] != selected_indicator["id"]]
-
-                    # Atualizar o estado da sessão e o arquivo JSON
-                    st.session_state["indicators"] = indicators
-                    save_indicators(indicators, INDICATORS_FILE)
-
-                     # Limpar estado de exclusão e edição
-                    if f"deleting_indicator_{selected_indicator['id']}" in st.session_state:
-                        del st.session_state[f"deleting_indicator_{selected_indicator['id']}"]
-                    st.session_state.editing_indicator_id = None
-                    st.session_state.current_formula_vars = []
-                    st.session_state.current_var_descriptions = {}
-                    st.session_state.current_variable_values = {} # Limpa também os valores de variáveis
-
-
-                    # Recarrega a página para atualizar a lista
+                    # Define o estado para 'deleting' e reruns para executar a exclusão
+                    st.session_state[delete_state_key] = 'deleting'
                     st.rerun()
             with col2:
+                # Botão Cancelar - FORA do form, PRECISA de 'key'
                 if st.button("❌ Cancelar", key=f"cancel_delete_{selected_indicator['id']}"):
                     st.info("Exclusão cancelada.")
-                     # Limpar estado de exclusão
-                    if f"deleting_indicator_{selected_indicator['id']}" in st.session_state:
-                        del st.session_state[f"deleting_indicator_{selected_indicator['id']}"]
+                    # Reseta o estado e reruns
+                    st.session_state[delete_state_key] = None
                     st.rerun()
 
+        # --- NOVO: Bloco de execução da exclusão (fora do form) ---
+        # Este bloco só é executado se o estado for 'deleting'
+        if st.session_state.get(delete_state_key) == 'deleting':
+            # Executa a exclusão
+            delete_indicator(selected_indicator["id"], INDICATORS_FILE, RESULTS_FILE, INDICATOR_LOG_FILE)
+            st.success(f"Indicador '{selected_indicator['nome']}' excluído com sucesso!")
+
+            # Reseta o estado e reruns para atualizar a lista de indicadores
+            st.session_state[delete_state_key] = None
+            st.session_state.editing_indicator_id = None # Limpa também o estado de edição
+            st.session_state.current_formula_vars = []
+            st.session_state.current_var_descriptions = {}
+            st.session_state.current_variable_values = {} # Limpa também os valores de variáveis
+
+            st.rerun()
+
+
     st.markdown('</div>', unsafe_allow_html=True)
+
 
 def display_result_with_delete(result, selected_indicator, RESULTS_FILE, USER_LOG_FILE):
     """Exibe um resultado com a opção de excluir."""
