@@ -1648,15 +1648,39 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                         test_button_clicked = st.form_submit_button("✨ Calcular Resultado")
 
                         # Exibir o resultado calculado se estiver no estado da sessão
-                        calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
-                        if st.session_state.get(calculated_result_state_key) is not None:
-                             calculated_result = st.session_state[calculated_result_state_key]
-                             # NOVO: Formatar resultado calculado para 2 casas decimais e adicionar unidade
-                             result_display = f"{calculated_result:.2f}{selected_indicator.get('unidade', '')}"
-                             st.markdown(f"**Resultado Calculado:** **{result_display}**") # Exibe novamente se já calculado
+                         calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
+                         if st.session_state.get(calculated_result_state_key) is not None:
+                              calculated_result = st.session_state[calculated_result_state_key]
+                              # NOVO: Formatar resultado calculado para 2 casas decimais e adicionar unidade
+                              result_display = f"{calculated_result:.2f}{selected_indicator.get('unidade', '')}"
+                              st.markdown(f"**Resultado Calculado:** **{result_display}**") # Exibe novamente se já calculado
+
+                              # --- NOVO: Lógica para verificar e exibir se a meta foi atingida ---
+                              try:
+                                  meta_value = float(selected_indicator.get("meta", 0.0))
+                                  comparacao_type = selected_indicator.get("comparacao", "Maior é melhor")
+                                  unidade_value = selected_indicator.get('unidade', '')
+
+                                  meta_display_formatted = f"{meta_value:.2f}{unidade_value}"
+
+                                  if comparacao_type == "Maior é melhor":
+                                      if calculated_result >= meta_value:
+                                          st.success(f"✅ Meta atingida! (Resultado {result_display} >= Meta {meta_display_formatted})")
+                                      else:
+                                          st.warning(f"⚠️ Meta não atingida. (Resultado {result_display} < Meta {meta_display_formatted})")
+                                  else: # Menor é melhor
+                                      if calculated_result <= meta_value:
+                                          st.success(f"✅ Meta atingida! (Resultado {result_display} <= Meta {meta_display_formatted})")
+                                      else:
+                                          st.warning(f"⚠️ Meta não atingida. (Resultado {result_display} > Meta {meta_display_formatted})")
+                              except ValueError:
+                                  st.error("❌ Não foi possível comparar o resultado com a meta. Verifique os valores.")
+                              except Exception as e:
+                                  st.error(f"❌ Erro ao verificar a meta: {e}")
+                              # --- Fim da nova lógica ---
 
 
-                    else:
+                     else:
                          st.warning("O indicador tem uma fórmula, mas nenhuma variável definida. O resultado será um valor fixo.")
                          # Se não tem variáveis, volta para o input direto de resultado
                          # NOVO: Limitar input de resultado direto a 2 casas decimais
