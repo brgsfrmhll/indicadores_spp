@@ -1170,7 +1170,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     save_indicators(indicators, INDICATORS_FILE)
                     log_indicator_action("Indicador criado", new_indicator["id"], INDICATOR_LOG_FILE)
 
-                                        st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
+                    st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
 
                     # --- CORREÇÃO: Limpar estado do formulário e estados dinâmicos após sucesso ---
                     # Limpa os inputs externos removendo suas chaves do session_state
