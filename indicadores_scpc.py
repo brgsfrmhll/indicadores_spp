@@ -1203,7 +1203,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     # e os estados dinâmicos (create_current_var_descriptions, create_sample_values)
                     # que inicializam esses inputs já foram limpos.
 
-                    # A linha 'st.rerun()' que estava aqui foi REMOVIDA para manter a mensagem de sucesso visível.
+                    st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
