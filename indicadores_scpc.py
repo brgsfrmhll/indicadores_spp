@@ -1686,7 +1686,6 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                     st.info(
                         f"Insira os valores para calcular o resultado usando a fórmula: `{selected_indicator['formula']}`")
 
-                    # Usar colunas para organizar os inputs das variáveis
                     vars_to_fill = list(selected_indicator["variaveis"].items())
                     if vars_to_fill:
                         # Usar uma chave única para os inputs de variável dentro do formulário
@@ -1721,7 +1720,8 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                             calculated_result = st.session_state[calculated_result_state_key]
                             # NOVO: Formatar resultado calculado para 2 casas decimais e adicionar unidade
                             result_display = f"{calculated_result:.2f}{selected_indicator.get('unidade', '')}"
-                            st.markdown(f"**Resultado Calculado:** **{result_display}**")  # Exibe novamente se já calculado
+                            st.markdown(
+                                f"**Resultado Calculado:** **{result_display}**")  # Exibe novamente se já calculado
 
                             # --- NOVO: Lógica para verificar e exibir se a meta foi atingida ---
                             try:
@@ -1752,10 +1752,17 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                             # --- Fim da nova lógica ---
 
 
-                else:
-                    st.warning(
-                        "O indicador tem uma fórmula, mas nenhuma variável definida. O resultado será um valor fixo.")
-                    # Se não tem variáveis, volta para o input direto de resultado
+                else:  # Este bloco agora trata os casos onde NÃO tem fórmula COM variáveis
+                    # (ou seja, não tem fórmula OU não tem variáveis)
+                    # Podemos adicionar uma verificação mais específica aqui se necessário,
+                    # mas o input direto é o mesmo para ambos os sub-casos.
+                    if selected_indicator.get("formula") and not selected_indicator.get("variaveis"):
+                        st.warning(
+                            "O indicador tem uma fórmula, mas nenhuma variável definida. O resultado será um valor fixo.")
+                    elif not selected_indicator.get("formula"):
+                        st.info("Este indicador não possui fórmula definida. O resultado será preenchido diretamente.")
+
+                    # Se não tem fórmula COM variáveis, usa preenchimento direto do resultado
                     # NOVO: Limitar input de resultado direto a 2 casas decimais
                     resultado_input_value = st.number_input("Resultado", step=0.01, format="%.2f",
                                                             key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
@@ -1764,21 +1771,10 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                     calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"  # Definir a chave mesmo sem cálculo
                     st.session_state[calculated_result_state_key] = None  # Garante que resultado calculado está vazio
 
-            else:
-            # Indicador sem fórmula, usa preenchimento direto do resultado
-            # NOVO: Limitar input de resultado direto a 2 casas decimais
-            resultado_input_value = st.number_input("Resultado", step=0.01, format="%.2f",
-                                                    key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
-            variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"  # Definir a chave mesmo sem variáveis
-            st.session_state[variable_values_key] = {}  # Garante que valores_variaveis está vazio
-            # Linha 1652 corrigida:
-            calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"  # Definir a chave mesmo sem cálculo
-            st.session_state[calculated_result_state_key] = None  # Garante que resultado calculado está vazio
-
-        # Campos de Observações e Análise Crítica (mantidos)
-        observacoes = st.text_area("Observações (opcional)",
-                                   placeholder="Adicione informações relevantes sobre este resultado",
-                                   key=f"obs_input_{selected_indicator['id']}_{selected_period_str}")
+                # Campos de Observações e Análise Crítica (mantidos)
+            observacoes = st.text_area("Observações (opcional)",
+                                       placeholder="Adicione informações relevantes sobre este resultado",
+                                       key=f"obs_input_{selected_indicator['id']}_{selected_period_str}")
         # Análise Crítica 5W2H
         st.markdown("### Análise Crítica (5W2H)")
         st.markdown("""
@@ -2035,7 +2031,7 @@ if indicator_results:
                         st.write("Erro ao carregar análise.")
 
                 with cols_data[len(selected_indicator["variaveis"]) + 4]:
-                    if st.button("  ️", key=f"delete_result_{result.get('data_referencia')}"):
+                    if st.button("��️", key=f"delete_result_{result.get('data_referencia')}"):
                         delete_result(selected_indicator['id'], data_referencia, RESULTS_FILE, USER_LOG_FILE)
             else:
                 st.warning("Resultado com data de referência ausente. Impossível exibir/excluir.")
