@@ -1686,7 +1686,9 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                          # Se não tem variáveis, volta para o input direto de resultado
                          # NOVO: Limitar input de resultado direto a 2 casas decimais
                          resultado_input_value = st.number_input("Resultado", step=0.01, format="%.2f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
+                         variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}" # Definir a chave mesmo sem variáveis
                          st.session_state[variable_values_key] = {} # Garante que valores_variaveis está vazio
+                         calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}" # Definir a chave mesmo sem cálculo
                          st.session_state[calculated_result_state_key] = None # Garante que resultado calculado está vazio
 
 
@@ -1696,6 +1698,7 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                     resultado_input_value = st.number_input("Resultado", step=0.01, format="%.2f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
                     variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}" # Definir a chave mesmo sem variáveis
                     st.session_state[variable_values_key] = {} # Garante que valores_variaveis está vazio
+                    # Linha 1652 corrigida:
                     calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}" # Definir a chave mesmo sem cálculo
                     st.session_state[calculated_result_state_key] = None # Garante que resultado calculado está vazio
 
@@ -1946,7 +1949,7 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                                       st.write("Erro ao carregar análise.")
 
                            with cols_data[len(selected_indicator["variaveis"])+4]:
-                                if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}"):
+                                if st.button("��️", key=f"delete_result_{result.get('data_referencia')}"):
                                     delete_result(selected_indicator['id'], data_referencia, RESULTS_FILE, USER_LOG_FILE)
                       else:
                            st.warning("Resultado com data de referência ausente. Impossível exibir/excluir.")
