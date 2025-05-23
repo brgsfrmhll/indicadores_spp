@@ -1170,7 +1170,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     save_indicators(indicators, INDICATORS_FILE)
                     log_indicator_action("Indicador criado", new_indicator["id"], INDICATOR_LOG_FILE)
 
-                    st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
+                                        st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
 
                     # --- CORREÇÃO: Limpar estado do formulário e estados dinâmicos após sucesso ---
                     # Limpa os inputs externos removendo suas chaves do session_state
@@ -1203,7 +1203,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     # e os estados dinâmicos (create_current_var_descriptions, create_sample_values)
                     # que inicializam esses inputs já foram limpos.
 
-                    st.rerun() # Recarrega a página para limpar os campos e estados
+                    # A linha 'st.rerun()' que estava aqui foi REMOVIDA para manter a mensagem de sucesso visível.
 
     st.markdown('</div>', unsafe_allow_html=True)
 
