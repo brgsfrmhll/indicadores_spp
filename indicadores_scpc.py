@@ -902,18 +902,20 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
 
     # --- Campos do indicador (alguns dentro, outros fora do form) ---
 
-    # Campos básicos do indicador (fora do form para permitir o botão "Carregar" externo)
     # Estes inputs serão limpos removendo suas chaves do session_state
-    nome = st.text_input("Nome do Indicador", key="create_nome_input")
-    objetivo = st.text_area("Objetivo", key="create_objetivo_input")
-    unidade = st.text_input("Unidade do Resultado", placeholder="Ex: %", key="create_unidade_input")
+    # Adicionado 'value' para garantir que os campos reflitam o estado da sessão e possam ser limpos
+    nome = st.text_input("Nome do Indicador", key="create_nome_input", value=st.session_state.get("create_nome_input", ""))
+    objetivo = st.text_area("Objetivo", key="create_objetivo_input", value=st.session_state.get("create_objetivo_input", ""))
+    unidade = st.text_input("Unidade do Resultado", placeholder="Ex: %", key="create_unidade_input", value=st.session_state.get("create_unidade_input", ""))
 
     # Campo da fórmula (fora do form para ser lido pelo botão externo)
     # Este input será limpo removendo sua chave do session_state
+    # Adicionado 'value' para garantir que o campo reflita o estado da sessão e possa ser limpo
     formula = st.text_input(
         "Fórmula de Cálculo (Use letras para variáveis, ex: A+B/C)",
         placeholder="Ex: (DEMISSOES / TOTAL_FUNCIONARIOS) * 100",
-        key="create_formula_input" # Chave única para este input
+        key="create_formula_input", # Chave única para este input
+        value=st.session_state.get("create_formula_input", "")
     )
 
     # Botão para carregar a fórmula e detectar variáveis (AGORA FORA DO FORM)
@@ -1091,11 +1093,15 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
     st.markdown("---")
     with st.form(key=form_key): # Este é o formulário principal para criar o indicador
         # Limitar input de meta a 2 casas decimais
-        meta = st.number_input("Meta", step=0.01, format="%.2f", key=f"{form_key}_meta")
-        comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"], key=f"{form_key}_comparacao")
+        # Adicionado 'value' para garantir que o campo reflita o estado da sessão e possa ser limpo
+        meta = st.number_input("Meta", step=0.01, format="%.2f", key=f"{form_key}_meta", value=st.session_state.get(f"{form_key}_meta", 0.0))
+        # Adicionado 'index' para garantir que o campo reflita o estado da sessão e possa ser limpo
+        comparacao = st.selectbox("Comparação", ["Maior é melhor", "Menor é melhor"], key=f"{form_key}_comparacao", index=["Maior é melhor", "Menor é melhor"].index(st.session_state.get(f"{form_key}_comparacao", "Maior é melhor")))
         # Adicionado verificação se as listas não estão vazias antes de acessar o índice 0
-        tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS, key=f"{form_key}_tipo_grafico", index=0 if TIPOS_GRAFICOS else 0)
-        responsavel = st.selectbox("Setor Responsável", SETORES, key=f"{form_key}_responsavel", index=0 if SETORES else 0)
+        # Adicionado 'index' para garantir que o campo reflita o estado da sessão e possa ser limpo
+        tipo_grafico = st.selectbox("Tipo de Gráfico Padrão", TIPOS_GRAFICOS, key=f"{form_key}_tipo_grafico", index=TIPOS_GRAFICOS.index(st.session_state.get(f"{form_key}_tipo_grafico", TIPOS_GRAFICOS[0])) if TIPOS_GRAFICOS else 0)
+        # Adicionado 'index' para garantir que o campo reflita o estado da sessão e possa ser limpo
+        responsavel = st.selectbox("Setor Responsável", SETORES, key=f"{form_key}_responsavel", index=SETORES.index(st.session_state.get(f"{form_key}_responsavel", SETORES[0])) if SETORES else 0)
 
         # Botão principal de criação (dentro do form principal)
         create_button = st.form_submit_button("➕ Criar")
@@ -1145,7 +1151,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
             #      return
 
             with st.spinner("Criando indicador..."):
-                time.sleep(0.5)
+                time.sleep(0.5) # Mantém este tempo curto para o spinner
                 indicators = load_indicators(INDICATORS_FILE)
 
                 if any(ind["nome"] == nome_submitted for ind in indicators):
@@ -1171,10 +1177,10 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     log_indicator_action("Indicador criado", new_indicator["id"], INDICATOR_LOG_FILE)
 
                     st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
+                    time.sleep(2) # Exibe a mensagem por 2 segundos
 
-                    # --- CORREÇÃO: Limpar estado do formulário e estados dinâmicos após sucesso ---
+                    # --- Limpar estado do formulário e estados dinâmicos após sucesso ---
                     # Limpa os inputs externos removendo suas chaves do session_state
-                    # Use del st.session_state[...]
                     if "create_nome_input" in st.session_state:
                         del st.session_state["create_nome_input"]
                     if "create_objetivo_input" in st.session_state:
@@ -1185,12 +1191,10 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                         del st.session_state["create_formula_input"]
 
                     # Limpa os inputs dentro do form principal removendo sua chave do session_state
-                    # Deletar a chave do formulário é a forma padrão de resetar widgets dentro dele
                     if form_key in st.session_state:
                          del st.session_state[form_key]
 
                     # Limpa os estados dinâmicos relacionados à fórmula e teste
-                    # Estes não são chaves de widget, então a atribuição para o valor padrão ou limpeza da lista/dict está correta.
                     st.session_state.create_current_formula_vars = []
                     st.session_state.create_current_var_descriptions = {}
                     st.session_state.create_sample_values = {}
@@ -1198,10 +1202,8 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     st.session_state.show_variable_section = False # Oculta a seção de variáveis/teste
                     st.session_state.formula_loaded = False # Reseta o estado de fórmula carregada
 
-                    # Não é necessário limpar explicitamente os inputs do formulário de teste,
-                    # pois a seção inteira (que contém o formulário de teste) será ocultada
-                    # e os estados dinâmicos (create_current_var_descriptions, create_sample_values)
-                    # que inicializam esses inputs já foram limpos.
+                    # Rola a página para o topo
+                    st.markdown("<script>window.scrollTo(0, 0);</script>", unsafe_allow_html=True)
 
                     st.rerun()
 
