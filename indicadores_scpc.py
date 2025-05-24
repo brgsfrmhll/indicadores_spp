@@ -1506,7 +1506,18 @@ def display_result_with_delete(result, selected_indicator, RESULTS_FILE, USER_LO
         with col1:
             st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
         with col2:
-            st.write(result.get('resultado', 'N/A'))
+            resultado = result.get('resultado', 'N/A')
+            unidade = selected_indicator.get('unidade', '')
+            meta = selected_indicator.get('meta', None)
+            comparacao = selected_indicator.get('comparacao', 'Maior é melhor')
+        
+            icone = ":white_circle:"  # Ícone neutro por padrão
+            if meta is not None and isinstance(meta, (int, float)) and isinstance(resultado, (int, float)):
+                if comparacao == "Maior é melhor":
+                    icone = ":white_check_mark:" if resultado >= meta else ":x:"
+                else:  # Menor é melhor
+                    icone = ":white_check_mark:" if resultado <= meta else ":x:"
+            st.markdown(f"{icone} **{resultado:.2f}{unidade}**")
         with col3:
             st.write(result.get('observacao', 'N/A'))
         with col4:
