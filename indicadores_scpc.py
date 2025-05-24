@@ -3512,6 +3512,10 @@ def define_data_directories():
     return DATA_DIR, INDICATORS_FILE, RESULTS_FILE, CONFIG_FILE, USERS_FILE, BACKUP_LOG_FILE, INDICATOR_LOG_FILE, USER_LOG_FILE, KEY_FILE
 
 def main():
+    
+    # Inicializar o estado da sessão
+    configure_page() 
+    
     # Inicializar o estado da sessão
     initialize_session_state()
 
