@@ -94,9 +94,19 @@ def configure_locale():
 
 def scroll_to_top():
     """
-    Rola a página do Streamlit para o topo.
+    Rola a página do Streamlit para o topo com um pequeno atraso.
+    Este atraso ajuda a garantir que o DOM esteja pronto antes da rolagem.
     """
-    st.markdown("<script>window.scrollTo(0, 0);</script>", unsafe_allow_html=True)        
+    st.markdown(
+        """
+        <script>
+            setTimeout(function() {
+                window.scrollTo(0, 0);
+            }, 100); // Atraso de 100 milissegundos (ajuste se necessário)
+        </script>
+        """,
+        unsafe_allow_html=True
+    )     
 
 def configure_page():
     """Configura a página do Streamlit."""
