@@ -1499,25 +1499,32 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
     st.markdown('</div>', unsafe_allow_html=True)
      
 def display_result_with_delete(result, selected_indicator, RESULTS_FILE, USER_LOG_FILE):
-    """Exibe um resultado com a opção de excluir."""
+    """Exibe um resultado com a opção de excluir e ícone de status da meta."""
     data_referencia = result.get('data_referencia')
     if data_referencia:
-        col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])  # Ajuste as proporções das colunas
+        col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 2, 2, 1])  # Ajuste as proporções conforme necessário
         with col1:
             st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
+
         with col2:
             resultado = result.get('resultado', 'N/A')
             unidade = selected_indicator.get('unidade', '')
             meta = selected_indicator.get('meta', None)
             comparacao = selected_indicator.get('comparacao', 'Maior é melhor')
-        
-            icone = ":white_circle:"  # Ícone neutro por padrão
-            if meta is not None and isinstance(meta, (int, float)) and isinstance(resultado, (int, float)):
+
+            icone = ":white_circle:"  # Neutro por padrão
+            try:
+                resultado_float = float(resultado)
+                meta_float = float(meta)
                 if comparacao == "Maior é melhor":
-                    icone = ":white_check_mark:" if resultado >= meta else ":x:"
-                else:  # Menor é melhor
-                    icone = ":white_check_mark:" if resultado <= meta else ":x:"
+                    icone = ":white_check_mark:" if resultado_float >= meta_float else ":x:"
+                elif comparacao == "Menor é melhor":
+                    icone = ":white_check_mark:" if resultado_float <= meta_float else ":x:"
+            except (TypeError, ValueError):
+                pass  # Se resultado ou meta não forem válidos, mantém ícone neutro
+
             st.markdown(f"{icone} **{resultado:.2f}{unidade}**")
+
         with col3:
             st.write(result.get('observacao', 'N/A'))
         with col4:
@@ -1529,6 +1536,7 @@ def display_result_with_delete(result, selected_indicator, RESULTS_FILE, USER_LO
                 delete_result(selected_indicator['id'], data_referencia, RESULTS_FILE, USER_LOG_FILE)
     else:
         st.warning("Data de referência ausente. Impossível excluir este resultado.")
+
 
 def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG_FILE, USERS_FILE):
     """Mostra a página de preenchimento de indicador com calculadora dinâmica."""
