@@ -1478,7 +1478,8 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
             st.session_state.current_var_descriptions = {}
             st.session_state.current_variable_values = {} # Limpa também os valores de variáveis
 
-
+            time.sleep(2) 
+            scroll_to_top() 
             st.rerun()
 
 
