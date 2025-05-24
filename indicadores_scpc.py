@@ -1211,7 +1211,6 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     st.session_state.formula_loaded = False # Reseta o estado de fórmula carregada
 
                     # Rola a página para o topo
-                    scroll_to_top() 
                     st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
