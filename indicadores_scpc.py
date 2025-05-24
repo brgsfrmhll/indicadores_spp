@@ -84,6 +84,8 @@ def initialize_session_state():
     # Adicionar estado para armazenar os valores das variáveis ao preencher
     if 'current_variable_values' not in st.session_state:
          st.session_state.current_variable_values = {}
+    if 'should_scroll_to_top' not in st.session_state:
+        st.session_state.should_scroll_to_top = False    
 
 def configure_locale():
     """Configura o locale para português do Brasil."""
@@ -3540,8 +3542,13 @@ def main():
     generate_key(KEY_FILE)
     cipher = initialize_cipher(KEY_FILE)
     
-    # Adicione o ponto de âncora aqui, no topo da página
-    add_anchor("top_anchor")
+    # NOVO: Marcar o topo da página para rolagem
+    scroll_to_here(0, key='top_of_page')
+
+    # NOVO: Lógica para executar a rolagem se a flag estiver ativa
+    if st.session_state.should_scroll_to_top:
+        scroll_to_here(0, key='top_of_page') # Rola para o topo
+        st.session_state.should_scroll_to_top = False # Reseta a flag após a rolagem
     
     # Verificar autenticação
     if not st.session_state.authenticated:
