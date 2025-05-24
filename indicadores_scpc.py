@@ -92,6 +92,12 @@ def configure_locale():
     except locale.Error as e:
         st.warning(f"Não foi possível configurar o locale para pt_BR.UTF-8: {e}. Verifique se o locale está instalado no seu sistema.")
 
+def scroll_to_top():
+    """
+    Rola a página do Streamlit para o topo.
+    """
+    st.markdown("<script>window.scrollTo(0, 0);</script>", unsafe_allow_html=True)        
+
 def configure_page():
     """Configura a página do Streamlit."""
     st.set_page_config(
@@ -1203,8 +1209,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
                     st.session_state.formula_loaded = False # Reseta o estado de fórmula carregada
 
                     # Rola a página para o topo
-                    st.markdown("<script>window.scrollTo(0, 0);</script>", unsafe_allow_html=True)
-
+                    scroll_to_top() 
                     st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
