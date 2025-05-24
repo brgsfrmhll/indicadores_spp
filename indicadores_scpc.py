@@ -1426,14 +1426,16 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
                         # Salvar alterações
                         save_indicators(indicators, INDICATORS_FILE)
                         st.session_state["indicators"] = load_indicators(INDICATORS_FILE)  # Recarrega os indicadores
-                        st.success(f"✅ Indicador '{nome}' atualizado com sucesso!")
+                        with st.spinner("Atualizando indicador..."):
+                            st.success(f"✅ Indicador '{nome}' atualizado com sucesso!")
+                            time.sleep(2) # Exibe a mensagem por 2 segundos
 
                         # Limpar estado da sessão relacionado à edição após salvar
                         st.session_state.editing_indicator_id = None
                         st.session_state.current_formula_vars = []
                         st.session_state.current_var_descriptions = {}
                         st.session_state.current_variable_values = {} # Limpa também os valores de variáveis
-
+                        scroll_to_top()
                         st.rerun() # Recarrega a página para atualizar a lista ou mostrar o indicador editado
                 else:
                     st.warning("⚠️ Por favor, preencha todos os campos obrigatórios (Nome, Objetivo, Fórmula).")
@@ -1469,7 +1471,9 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
         if st.session_state.get(delete_state_key) == 'deleting':
             # Executa a exclusão
             delete_indicator(selected_indicator["id"], INDICATORS_FILE, RESULTS_FILE, INDICATOR_LOG_FILE)
-            st.success(f"Indicador '{selected_indicator['nome']}' excluído com sucesso!")
+            with st.spinner("Excluindo indicador..."):
+                st.success(f"Indicador '{selected_indicator['nome']}' excluído com sucesso!")
+                time.sleep(2) # Exibe a mensagem por 2 segundos
 
             # Reseta o estado e reruns para atualizar a lista de indicadores
             st.session_state[delete_state_key] = None
@@ -1477,10 +1481,9 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FILE,
             st.session_state.current_formula_vars = []
             st.session_state.current_var_descriptions = {}
             st.session_state.current_variable_values = {} # Limpa também os valores de variáveis
-
             
+            scroll_to_top()
             st.rerun()
-
 
     st.markdown('</div>', unsafe_allow_html=True)
      
@@ -1863,8 +1866,9 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                         }
                         results.append(new_result)
                         save_results(results, RESULTS_FILE)
-                        st.success(
-                            f"✅ Resultado adicionado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
+                        with st.spinner("Salvando resultado..."):
+                            st.success(f"✅ Resultado adicionado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
+                            time.sleep(2) # Exibe a mensagem por 2 segundos
 
                         # Limpar estados da sessão relacionados ao preenchimento após salvar
                         # st.session_state.current_variable_values = {} # Limpa os valores das variáveis
@@ -1872,7 +1876,7 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                              del st.session_state[variable_values_key] # Limpa a chave específica do formulário
                         if calculated_result_state_key in st.session_state:
                              del st.session_state[calculated_result_state_key] # Limpa o resultado calculado
-
+                        scroll_to_top()
                         st.rerun() # Recarrega a página para atualizar a lista de períodos disponíveis
                 else:
                     st.warning("⚠️ Por favor, informe o resultado ou calcule-o antes de salvar.")
