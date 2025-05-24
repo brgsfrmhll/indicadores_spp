@@ -1951,12 +1951,26 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                                           st.write('N/A') # Exibe o valor da variável ou N/A
 
                            with cols_data[len(selected_indicator["variaveis"])+1]:
-                                # NOVO: Formatar exibição do resultado a 2 casas decimais e adicionar unidade
-                                result_value = result.get('resultado')
-                                if isinstance(result_value, (int, float)):
-                                     st.write(f"{result_value:.2f}{unidade_display}")
-                                else:
-                                     st.write('N/A')
+                            result_value = result.get('resultado')
+                            unidade = selected_indicator.get('unidade', '')
+                            meta = selected_indicator.get('meta', None)
+                            comparacao = selected_indicator.get('comparacao', 'Maior é melhor')
+                        
+                            icone = ":white_circle:"  # Padrão: sem meta definida
+                            try:
+                                resultado_float = float(result_value)
+                                meta_float = float(meta)
+                                if comparacao == "Maior é melhor":
+                                    icone = ":white_check_mark:" if resultado_float >= meta_float else ":x:"
+                                elif comparacao == "Menor é melhor":
+                                    icone = ":white_check_mark:" if resultado_float <= meta_float else ":x:"
+                            except (TypeError, ValueError):
+                                pass  # Falha ao converter valores → ícone neutro
+                        
+                            if isinstance(result_value, (int, float)):
+                                st.markdown(f"{icone} **{result_value:.2f}{unidade}**")
+                            else:
+                                st.write('N/A')
 
                            with cols_data[len(selected_indicator["variaveis"])+2]: st.write(result.get('observacao', 'N/A'))
                            with cols_data[len(selected_indicator["variaveis"])+3]:
