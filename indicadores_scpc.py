@@ -15,6 +15,7 @@ import locale
 from cryptography.fernet import Fernet
 from pathlib import Path  # Adicione esta linha
 from sympy import symbols, sympify, SympifyError # Para cálculo seguro e detecção de símbolos
+from streamlit_scroll_to_top import scroll_to_here
 
 SETORES = ["RH", "Financeiro", "Operações", "Marketing", "Comercial", "TI", "Logística", "Produção"]
 TIPOS_GRAFICOS = ["Linha", "Barra", "Pizza", "Área", "Dispersão"]
@@ -28,7 +29,6 @@ BACKUP_LOG_FILE = os.path.join(DATA_DIR, "backup_log.json")
 INDICATOR_LOG_FILE = os.path.join(DATA_DIR, "indicator_log.json")
 USER_LOG_FILE = os.path.join(DATA_DIR, "user_log.json")
 KEY_FILE = "secret.key"
-
 
 # Funções para converter a imagem para Base64 (DEFINIÇÃO GLOBAL)
 def img_to_bytes(img_path):
@@ -94,9 +94,9 @@ def configure_locale():
 
 def scroll_to_top():
     """
-    Rola a página do Streamlit para o topo usando o componente streamlit-scrollable-anchor.
+    Define o estado para que a página role para o topo no próximo rerun.
     """
-    scroll_to_anchor("top_anchor")
+    st.session_state.should_scroll_to_top = True
 
 def configure_page():
     """Configura a página do Streamlit."""
