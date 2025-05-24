@@ -115,7 +115,7 @@ def configure_page():
         pass
 
     st.set_page_config(
-        page_title="Portal de Indicadores",
+        page_title="[DEMO]Portal de Indicadores",
         page_icon=page_icon_value, # Usa o valor determinado (logo ou fallback)
         layout="wide"
     )
