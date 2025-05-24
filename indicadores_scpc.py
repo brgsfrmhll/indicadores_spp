@@ -1657,6 +1657,21 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
                              result_display = f"{calculated_result:.2f}{selected_indicator.get('unidade', '')}"
                              st.markdown(f"**Resultado Calculado:** **{result_display}**") # Exibe novamente se já calculado
 
+                             # --- NOVO: Feedback sobre o cumprimento da meta ---
+                             meta_valor = float(selected_indicator.get('meta', 0.0))
+                             comparacao_tipo = selected_indicator['comparacao']
+
+                             if comparacao_tipo == "Maior é melhor":
+                                 if calculated_result >= meta_valor:
+                                     st.success(f"🎉 Meta Atingida! O resultado ({result_display}) é maior ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+                                 else:
+                                     st.warning(f"⚠️ Meta Não Atingida. O resultado ({result_display}) é menor que a meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+                             elif comparacao_tipo == "Menor é melhor":
+                                 if calculated_result <= meta_valor:
+                                     st.success(f"🎉 Meta Atingida! O resultado ({result_display}) é menor ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+                                 else:
+                                     st.warning(f"⚠️ Meta Não Atingida. O resultado ({result_display}) é maior que a meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+
 
                     else:
                          st.warning("O indicador tem uma fórmula, mas nenhuma variável definida. O resultado será um valor fixo.")
