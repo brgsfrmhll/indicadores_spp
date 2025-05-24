@@ -102,9 +102,21 @@ def scroll_to_top():
 
 def configure_page():
     """Configura a página do Streamlit."""
+    image_path = "logo.png"
+    logo_base64 = img_to_bytes(image_path) # Obtém a string Base64 da imagem
+    page_icon_value = "📈" # Ícone padrão de fallback caso o logo não seja encontrado
+
+    if logo_base64:
+        # Se a imagem foi convertida com sucesso, cria a URI de dados
+        page_icon_value = f"data:image/png;base64,{logo_base64}"
+    else:
+        # A função img_to_bytes já exibe um erro se o arquivo não for encontrado.
+        # Aqui, apenas garantimos que o fallback seja usado.
+        pass
+
     st.set_page_config(
         page_title="Portal de Indicadores",
-        page_icon="📊",
+        page_icon=page_icon_value, # Usa o valor determinado (logo ou fallback)
         layout="wide"
     )
 
