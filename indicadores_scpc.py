@@ -1138,11 +1138,10 @@ def create_indicator(SETORES, TIPOS_GRAFICOS, INDICATORS_FILE, INDICATOR_LOG_FIL
         unidade_submitted = st.session_state.get("create_unidade_input", "")
 
         # Acessa os valores dos inputs DENTRO do form principal via session_state (usando a chave do form)
-        meta_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_meta", 0.0)
-        comparacao_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_comparacao", "Maior é melhor")
-        # Adicionado verificação se as listas não estão vazias antes de acessar o índice 0
-        tipo_grafico_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_tipo_grafico", TIPOS_GRAFICOS[0] if TIPOS_GRAFICOS else "")
-        responsavel_submitted = st.session_state.get(form_key, {}).get(f"{form_key}_responsavel", SETORES[0] if SETORES else "")
+        meta_submitted = st.session_state.get(f"{form_key}_meta", 0.0)
+        comparacao_submitted = st.session_state.get(f"{form_key}_comparacao", "Maior é melhor")
+        tipo_grafico_submitted = st.session_state.get(f"{form_key}_tipo_grafico", TIPOS_GRAFICOS[0] if TIPOS_GRAFICOS else "")
+        responsavel_submitted = st.session_state.get(f"{form_key}_responsavel", SETORES[0] if SETORES else "")
 
 
         # Acessa as descrições das variáveis dos estados dinâmicos (atualizados pelo form de teste ou botão carregar)
