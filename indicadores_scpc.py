@@ -94,19 +94,9 @@ def configure_locale():
 
 def scroll_to_top():
     """
-    Rola a página do Streamlit para o topo com um pequeno atraso.
-    Este atraso ajuda a garantir que o DOM esteja pronto antes da rolagem.
+    Rola a página do Streamlit para o topo usando o componente streamlit-scrollable-anchor.
     """
-    st.markdown(
-        """
-        <script>
-            setTimeout(function() {
-                window.scrollTo(0, 0);
-            }, 100); // Atraso de 100 milissegundos (ajuste se necessário)
-        </script>
-        """,
-        unsafe_allow_html=True
-    )     
+    scroll_to_anchor("top_anchor")
 
 def configure_page():
     """Configura a página do Streamlit."""
@@ -3549,7 +3539,10 @@ def main():
     # Inicializar objeto de criptografia
     generate_key(KEY_FILE)
     cipher = initialize_cipher(KEY_FILE)
-
+    
+    # Adicione o ponto de âncora aqui, no topo da página
+    add_anchor("top_anchor")
+    
     # Verificar autenticação
     if not st.session_state.authenticated:
         show_login_page()
