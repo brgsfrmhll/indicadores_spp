@@ -2052,9 +2052,10 @@ def fill_indicator(SETORES, INDICATORS_FILE, RESULTS_FILE, TEMA_PADRAO, USER_LOG
             else:
                 st.info("Nenhum registro de preenchimento encontrado para este indicador.")
 
-
+        time.sleep(2) 
+        scroll_to_top() 
     st.markdown('</div>', unsafe_allow_html=True)
-
+    
 def get_analise_status(analise_json):
     """Função auxiliar para verificar o status de preenchimento da análise crítica."""
     if not analise_json or analise_json.strip() == "{}":
