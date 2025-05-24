@@ -805,7 +805,7 @@ def show_login_page():
     .block-container {
         padding-top: 2rem;
         padding-bottom: 2rem;
-        max-width: 450px;
+        max-width: 600px;
     }
 
     /* Estilo para mensagens */
