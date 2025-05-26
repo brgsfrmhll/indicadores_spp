@@ -613,13 +613,67 @@ def load_user_log(USER_LOG_FILE):
         st.warning("Erro ao decodificar o arquivo de log de usuários. O arquivo pode estar corrompido.")
         return []
 
-def save_users(users, USERS_FILE):
-    """Salva os usuários no arquivo."""
-    try:
-        with open(USERS_FILE, "w") as f:
-            json.dump(users, f, indent=4)
-    except Exception as e:
-        st.error(f"Erro ao salvar o arquivo de usuários: {e}")
+def save_users(users_data):
+    """
+    Salva os usuários no banco de dados PostgreSQL.
+    Esta função sincroniza o dicionário 'users_data' com a tabela 'usuarios'.
+    Ela insere novos usuários e atualiza os existentes.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+
+            # Primeiro, obter todos os usernames existentes no banco de dados
+            cur.execute("SELECT username FROM usuarios;")
+            existing_users_in_db = {row[0] for row in cur.fetchall()}
+
+            # Iterar sobre os usuários fornecidos para inserir ou atualizar
+            for username, data in users_data.items():
+                password_hash = data.get("password", "")
+                tipo = data.get("tipo", "Visualizador")
+                setor = data.get("setor", "Todos")
+                nome_completo = data.get("nome_completo", "")
+                email = data.get("email", "")
+                # data_criacao é gerenciada pelo banco de dados na inserção,
+                # mas pode ser útil para atualização se a lógica da aplicação precisar.
+                # Por simplicidade, vamos deixar o banco gerenciar a data_criacao na inserção.
+
+                if username in existing_users_in_db:
+                    # Atualizar usuário existente
+                    cur.execute("""
+                        UPDATE usuarios
+                        SET password_hash = %s, tipo = %s, setor = %s, nome_completo = %s, email = %s
+                        WHERE username = %s;
+                    """, (password_hash, tipo, setor, nome_completo, email, username))
+                else:
+                    # Inserir novo usuário
+                    cur.execute("""
+                        INSERT INTO usuarios (username, password_hash, tipo, setor, nome_completo, email)
+                        VALUES (%s, %s, %s, %s, %s, %s);
+                    """, (username, password_hash, tipo, setor, nome_completo, email))
+            
+            # Opcional: Remover usuários do banco de dados que não estão mais no 'users_data'
+            # Isso é importante se a aplicação permite exclusão de usuários.
+            # Se a exclusão for feita por uma função delete_user separada, esta parte pode ser omitida.
+            # Para uma sincronização completa:
+            users_to_delete = existing_users_in_db - set(users_data.keys())
+            for username_to_delete in users_to_delete:
+                cur.execute("DELETE FROM usuarios WHERE username = %s;", (username_to_delete,))
+                print(f"Usuário '{username_to_delete}' removido do banco de dados.")
+
+
+            conn.commit()
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao salvar usuários no banco de dados: {e}")
+            # st.error(f"Erro ao salvar usuários: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False # Retorna False se a conexão falhar
 
 def load_indicator_log(INDICATOR_LOG_FILE):
     """Carrega o log de indicadores do arquivo."""
