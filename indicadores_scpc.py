@@ -955,33 +955,74 @@ def save_results(results_data):
     return False # Retorna False se a conexão falhar
 
 
-def load_config(CONFIG_FILE):
-    """Carrega a configuração do arquivo."""
-    try:
-        with open(CONFIG_FILE, "r") as f:
-            config = json.load(f)
-            # Garante que a chave 'backup_hour' exista
+def load_config():
+    """
+    Carrega as configurações do banco de dados PostgreSQL.
+    Retorna um dicionário de configurações.
+    """
+    conn = get_db_connection()
+    config = {}
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT key, value FROM configuracoes;")
+            config_data = cur.fetchall()
+            
+            for row in config_data:
+                key, value = row
+                config[key] = value
+            
+            # Garantir que as chaves esperadas existam com valores padrão
+            if "theme" not in config:
+                config["theme"] = "padrao"
             if "backup_hour" not in config:
                 config["backup_hour"] = "00:00"
-            # Garante que a chave 'last_backup_date' exista
             if "last_backup_date" not in config:
-                config["last_backup_date"] = ""
-            return config
-    except FileNotFoundError:
-        config = {"theme": "padrao", "backup_hour": "00:00", "last_backup_date": ""}
-        save_config(config, CONFIG_FILE)
-        return config
-    except json.JSONDecodeError:
-        st.error("Erro ao decodificar o arquivo de configuração. O arquivo pode estar corrompido.")
-        return {"theme": "padrao", "backup_hour": "00:00", "last_backup_date": ""}
+                config["last_backup_date"] = "" # Pode ser uma string vazia ou um formato de data
 
-def save_config(config, CONFIG_FILE):
-    """Salva a configuração no arquivo."""
-    try:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config, f, indent=4)
-    except Exception as e:
-        st.error(f"Erro ao salvar o arquivo de configuração: {e}")
+            return config
+        except psycopg2.Error as e:
+            print(f"Erro ao carregar configurações do banco de dados: {e}")
+            # st.error(f"Erro ao carregar configurações: {e}")
+            # Retorna configurações padrão em caso de erro
+            return {"theme": "padrao", "backup_hour": "00:00", "last_backup_date": ""}
+        finally:
+            cur.close()
+            conn.close()
+    # Retorna configurações padrão se a conexão falhar
+    return {"theme": "padrao", "backup_hour": "00:00", "last_backup_date": ""}
+
+def save_config(config_data):
+    """
+    Salva as configurações no banco de dados PostgreSQL.
+    Esta função atualiza as configurações existentes e insere novas.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            
+            # Iterar sobre o dicionário de configurações fornecido
+            for key, value in config_data.items():
+                # Usar INSERT ... ON CONFLICT para inserir ou atualizar
+                cur.execute("""
+                    INSERT INTO configuracoes (key, value)
+                    VALUES (%s, %s)
+                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+                """, (key, value))
+            
+            conn.commit()
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao salvar configurações no banco de dados: {e}")
+            # st.error(f"Erro ao salvar configurações: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False # Retorna False se a conexão falhar
+    
 def verify_credentials(username, password, USERS_FILE):
     """Verifica as credenciais do usuário."""
     users = load_users(USERS_FILE)
