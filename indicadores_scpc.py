@@ -47,6 +47,7 @@ def get_db_connection():
 def create_tables_if_not_exists():
     """
     Cria as tabelas necessárias no banco de dados PostgreSQL se elas não existirem.
+    Também cria um usuário administrador padrão para o primeiro acesso.
     """
     conn = get_db_connection()
     if conn:
@@ -65,16 +66,29 @@ def create_tables_if_not_exists():
                     data_criacao TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            # Inserir usuário admin padrão se a tabela estiver vazia
-            cur.execute("SELECT COUNT(*) FROM usuarios;")
-            if cur.fetchone()[0] == 0:
-                admin_password_hash = hashlib.sha256("6105/*".encode()).hexdigest()
+            
+            # Verificar se o usuário admin já existe
+            cur.execute("SELECT COUNT(*) FROM usuarios WHERE username = 'admin';")
+            admin_exists = cur.fetchone()[0] > 0
+            
+            # Se o admin não existir, criar um usuário admin padrão
+            if not admin_exists:
+                # Defina aqui o usuário e senha padrão para o primeiro acesso
+                admin_username = "admin"
+                admin_password = "admin123"  # Você pode alterar para a senha que preferir
+                
+                # Gerar hash da senha
+                admin_password_hash = hashlib.sha256(admin_password.encode()).hexdigest()
+                
+                # Inserir o usuário admin
                 cur.execute("""
                     INSERT INTO usuarios (username, password_hash, tipo, setor, nome_completo, email)
                     VALUES (%s, %s, %s, %s, %s, %s);
-                """, ("admin", admin_password_hash, "Administrador", "Todos", "Administrador Padrão", "admin@example.com"))
-                print("Usuário 'admin' padrão inserido.")
-
+                """, (admin_username, admin_password_hash, "Administrador", "Todos", "Administrador do Sistema", "admin@example.com"))
+                
+                print(f"Usuário administrador padrão criado. Username: {admin_username}, Senha: {admin_password}")
+                
+            # Resto do código para criar outras tabelas...
             # 2. Tabela: indicadores
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS indicadores (
@@ -170,41 +184,6 @@ def create_tables_if_not_exists():
             cur.close()
             conn.close()
     return False
-
-# --- Funções de Persistência de Dados (DB) ---
-
-# Usuários
-def load_users():
-    """
-    Carrega os usuários do banco de dados PostgreSQL.
-    Retorna um dicionário de usuários no formato esperado pela aplicação.
-    """
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor()
-            cur.execute("SELECT username, password_hash, tipo, setor, nome_completo, email, data_criacao FROM usuarios;")
-            users_data = cur.fetchall()
-            
-            users = {}
-            for row in users_data:
-                username, password_hash, tipo, setor, nome_completo, email, data_criacao = row
-                users[username] = {
-                    "password": password_hash,
-                    "tipo": tipo,
-                    "setor": setor,
-                    "nome_completo": nome_completo if nome_completo is not None else "",
-                    "email": email if email is not None else "",
-                    "data_criacao": data_criacao.isoformat() if data_criacao else ""
-                }
-            return users
-        except psycopg2.Error as e:
-            print(f"Erro ao carregar usuários do banco de dados: {e}")
-            return {}
-        finally:
-            cur.close()
-            conn.close()
-    return {}
 
 def save_users(users_data):
     """
