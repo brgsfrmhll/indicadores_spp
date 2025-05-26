@@ -658,35 +658,48 @@ def log_user_action(action, username, USER_LOG_FILE):
     save_user_log(log, USER_LOG_FILE)
 
 
-def delete_result(indicator_id, data_referencia, RESULTS_FILE, USER_LOG_FILE):
-    """Exclui um resultado específico de um indicador e registra a ação."""
-    if not data_referencia or data_referencia == "N/A":
-        st.error("Data de referência ausente. Impossível excluir este resultado.")
-        return
+def delete_result(indicator_id, data_referencia_str, USER_LOG_FILE): # USER_LOG_FILE ainda é um parâmetro, mas será adaptado depois
+    """
+    Exclui um resultado específico de um indicador do banco de dados e registra a ação.
+    """
+    if not data_referencia_str:
+        # st.error("Data de referência ausente. Impossível excluir este resultado.")
+        print("Data de referência ausente. Impossível excluir este resultado.")
+        return False
 
-    results = load_results(RESULTS_FILE)
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            
+            # Converter data_referencia para objeto datetime para o banco de dados
+            try:
+                data_referencia_dt = datetime.fromisoformat(data_referencia_str)
+            except ValueError:
+                # st.error("Formato de data inválido. Impossível excluir este resultado.")
+                print(f"Formato de data inválido para exclusão: {data_referencia_str}")
+                return False
 
-    # Converter data_referencia para o formato ISO 8601 para comparação
-    try:
-        data_referencia_iso = datetime.fromisoformat(data_referencia).isoformat()
-    except ValueError:
-        st.error("Formato de data inválido. Impossível excluir este resultado.")
-        return
-
-    # Filtrar os resultados para excluir o resultado específico
-    updated_results = [
-        r for r in results
-        if not (r["indicator_id"] == indicator_id and r["data_referencia"] == data_referencia_iso)
-    ]
-
-    save_results(updated_results, RESULTS_FILE)
-
-    # Registrar a ação no log
-    log_user_action(f"Resultado excluído do indicador {indicator_id} para {data_referencia}", st.session_state.username,
-                    USER_LOG_FILE)
-
-    st.success("Resultado e análise crítica excluídos com sucesso!")
-    st.rerun()
+            cur.execute("""
+                DELETE FROM resultados
+                WHERE indicator_id = %s AND data_referencia = %s;
+            """, (indicator_id, data_referencia_dt))
+            
+            conn.commit()
+            
+            # Registrar a ação no log (assumindo que log_user_action será adaptada para DB)
+            # log_user_action(f"Resultado excluído do indicador {indicator_id} para {data_referencia_str}", st.session_state.username, USER_LOG_FILE)
+            print(f"Resultado excluído do indicador {indicator_id} para {data_referencia_str} no DB.")
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao excluir resultado do banco de dados: {e}")
+            # st.error(f"Erro ao excluir resultado: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False # Retorna False se a conexão falhar
 
 def delete_user(username, USERS_FILE, USER_LOG_FILE):
     """Exclui um usuário do arquivo de usuários."""
@@ -806,29 +819,141 @@ def delete_indicator(indicator_id, INDICATORS_FILE, RESULTS_FILE, INDICATOR_LOG_
     log_indicator_action("Indicador excluído", indicator_id, INDICATOR_LOG_FILE)  # Registrar ação de exclusão
     st.success(f"Indicador com ID '{indicator_id}' e seus resultados associados foram excluídos com sucesso!")
 
-def load_results(RESULTS_FILE):
-    """Carrega os resultados do arquivo."""
-    try:
-        with open(RESULTS_FILE, "r") as f:
-            results = json.load(f)
-            # Garantir que cada resultado tem a estrutura esperada para valores_variaveis
-            for res in results:
-                if "valores_variaveis" not in res:
-                    res["valores_variaveis"] = {} # Dicionário {variavel: valor}
+def load_results():
+    """
+    Carrega os resultados dos indicadores do banco de dados PostgreSQL.
+    Retorna uma lista de dicionários de resultados no formato esperado pela aplicação.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT indicator_id, data_referencia, resultado, valores_variaveis,
+                       observacao, analise_critica, data_criacao, data_atualizacao,
+                       usuario, status_analise
+                FROM resultados;
+            """)
+            results_data = cur.fetchall()
+            
+            results = []
+            for row in results_data:
+                (indicator_id, data_referencia, resultado, valores_variaveis,
+                 observacao, analise_critica, data_criacao, data_atualizacao,
+                 usuario, status_analise) = row
+                
+                results.append({
+                    "indicator_id": indicator_id,
+                    "data_referencia": data_referencia.isoformat() if data_referencia else "",
+                    "resultado": float(resultado) if resultado is not None else 0.0, # Converter de Decimal para float
+                    "valores_variaveis": valores_variaveis if valores_variaveis is not None else {}, # JSONB é carregado como dict
+                    "observacao": observacao if observacao is not None else "",
+                    "analise_critica": analise_critica if analise_critica is not None else "{}", # JSONB é carregado como dict, mas o original era string JSON
+                    "data_criacao": data_criacao.isoformat() if data_criacao else "",
+                    "data_atualizacao": data_atualizacao.isoformat() if data_atualizacao else "",
+                    "usuario": usuario if usuario is not None else "System",
+                    "status_analise": status_analise if status_analise is not None else "N/A"
+                })
             return results
-    except FileNotFoundError:
-        return []
-    except json.JSONDecodeError:
-        st.error("Erro ao decodificar o arquivo de resultados. O arquivo pode estar corrompido.")
-        return []
+        except psycopg2.Error as e:
+            print(f"Erro ao carregar resultados do banco de dados: {e}")
+            # st.error(f"Erro ao carregar resultados: {e}")
+            return []
+        finally:
+            cur.close()
+            conn.close()
+    return [] # Retorna lista vazia se a conexão falhar
 
-def save_results(results, RESULTS_FILE):
-    """Salva os resultados no arquivo."""
-    try:
-        with open(RESULTS_FILE, "w") as f:
-            json.dump(results, f, indent=4, default=str)
-    except Exception as e:
-        st.error(f"Erro ao salvar o arquivo de resultados: {e}")
+def save_results(results_data):
+    """
+    Salva os resultados dos indicadores no banco de dados PostgreSQL.
+    Esta função sincroniza a lista 'results_data' com a tabela 'resultados'.
+    Ela insere novos resultados e atualiza os existentes.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+
+            # Obter todos os pares (indicator_id, data_referencia) existentes no banco de dados
+            cur.execute("SELECT indicator_id, data_referencia FROM resultados;")
+            existing_results_keys_in_db = {(row[0], row[1].isoformat()) for row in cur.fetchall()}
+
+            # Iterar sobre os resultados fornecidos para inserir ou atualizar
+            for res in results_data:
+                indicator_id = res.get("indicator_id")
+                data_referencia_str = res.get("data_referencia")
+                
+                # Converter data_referencia para objeto datetime para o banco de dados
+                try:
+                    data_referencia_dt = datetime.fromisoformat(data_referencia_str)
+                except (ValueError, TypeError):
+                    print(f"Erro: data_referencia inválida para o resultado: {data_referencia_str}")
+                    continue # Pula este resultado se a data for inválida
+
+                resultado = res.get("resultado")
+                valores_variaveis = Json(res.get("valores_variaveis", {})) # Converter dict para Json para JSONB
+                observacao = res.get("observacao")
+                
+                # analise_critica pode vir como string JSON ou como dict.
+                # Se for string, converte para dict antes de passar para Json().
+                analise_critica_data = res.get("analise_critica", "{}")
+                if isinstance(analise_critica_data, str):
+                    try:
+                        analise_critica_data = json.loads(analise_critica_data)
+                    except json.JSONDecodeError:
+                        analise_critica_data = {} # Fallback para dict vazio se a string for inválida
+                analise_critica = Json(analise_critica_data)
+
+                usuario = res.get("usuario")
+                status_analise = res.get("status_analise")
+
+                # Chave composta para verificação
+                current_key = (indicator_id, data_referencia_dt.isoformat())
+
+                if current_key in existing_results_keys_in_db:
+                    # Atualizar resultado existente
+                    cur.execute("""
+                        UPDATE resultados
+                        SET resultado = %s, valores_variaveis = %s, observacao = %s,
+                            analise_critica = %s, data_atualizacao = CURRENT_TIMESTAMP,
+                            usuario = %s, status_analise = %s
+                        WHERE indicator_id = %s AND data_referencia = %s;
+                    """, (resultado, valores_variaveis, observacao, analise_critica,
+                          usuario, status_analise, indicator_id, data_referencia_dt))
+                else:
+                    # Inserir novo resultado
+                    cur.execute("""
+                        INSERT INTO resultados (indicator_id, data_referencia, resultado,
+                                                valores_variaveis, observacao, analise_critica,
+                                                data_criacao, data_atualizacao, usuario, status_analise)
+                        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, %s);
+                    """, (indicator_id, data_referencia_dt, resultado, valores_variaveis,
+                          observacao, analise_critica, usuario, status_analise))
+            
+            # Opcional: Remover resultados do banco de dados que não estão mais na lista 'results_data'
+            # Isso é importante se a aplicação permite exclusão de resultados.
+            # Se a exclusão for feita por uma função delete_result separada, esta parte pode ser omitida.
+            # Para uma sincronização completa:
+            current_results_keys_to_save = {(res.get("indicator_id"), datetime.fromisoformat(res.get("data_referencia")).isoformat()) for res in results_data if res.get("data_referencia")}
+            results_to_delete = existing_results_keys_in_db - current_results_keys_to_save
+            for ind_id, data_ref_str in results_to_delete:
+                data_ref_dt = datetime.fromisoformat(data_ref_str)
+                cur.execute("DELETE FROM resultados WHERE indicator_id = %s AND data_referencia = %s;", (ind_id, data_ref_dt))
+                print(f"Resultado para indicador '{ind_id}' e data '{data_ref_str}' removido do banco de dados.")
+
+            conn.commit()
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao salvar resultados no banco de dados: {e}")
+            # st.error(f"Erro ao salvar resultados: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False # Retorna False se a conexão falhar
+
 
 def load_config(CONFIG_FILE):
     """Carrega a configuração do arquivo."""
