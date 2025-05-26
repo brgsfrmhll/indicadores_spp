@@ -1117,9 +1117,11 @@ def create_indicator(SETORES, TIPOS_GRAFICOS):
                 new_sample_values = {}
                 for i, var in enumerate(st.session_state.create_current_formula_vars):
                     col_idx = i % len(cols_desc)
-                    with cols_desc[col_idx]: new_var_descriptions[var] = st.text_input(f"Descrição para '{var}'", value=st.session_state.create_current_var_descriptions.get(var, ""), placeholder=f"Ex: {var} - Número de Atendimentos", key=f"test_desc_input_{var}")
+                    with cols_desc[col_idx]:
+                        new_var_descriptions[var] = st.text_input(f"Descrição para '{var}'", value=st.session_state.create_current_var_descriptions.get(var, ""), placeholder=f"Ex: {var} - Número de Atendimentos", key=f"test_desc_input_{var}")
                     col_idx = i % len(cols_sample)
-                    with cols_sample[col_idx]: new_sample_values[var] = st.number_input(f"Valor de Teste para '{var}'", value=float(st.session_state.create_sample_values.get(var, 0.0)), step=0.01, format="%.2f", key=f"test_sample_input_{var}")
+                    with cols_sample[col_idx]:
+                        new_sample_values[var] = st.number_input(f"Valor de Teste para '{var}'", value=float(st.session_state.create_sample_values.get(var, 0.0)), step=0.01, format="%.2f", key=f"test_sample_input_{var}")
                 st.session_state.create_current_var_descriptions = new_var_descriptions
                 st.session_state.create_sample_values = new_sample_values
                 test_formula_button = st.form_submit_button("✨ Testar Fórmula")
@@ -1291,7 +1293,13 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
                 new_var_descriptions = {}
                 for i, var in enumerate(st.session_state.current_formula_vars):
                     col_idx = i % len(cols)
-                    with cols[col_idx]: new_var_descriptions[var] = st.text_input(f"Descrição para '{var}'", value=st.session_state.current_var_descriptions.get(var, ""), placeholder=f"Ex: {var} - Número de Atendimentos", key=f"desc_input_{var}_edit_{selected_indicator['id']}")
+                    with cols[col_idx]:
+                        new_var_descriptions[var] = st.text_input(
+                            f"Descrição para '{var}'",
+                            value=st.session_state.current_var_descriptions.get(var, ""),
+                            placeholder=f"Ex: {var} - Número de Atendimentos",
+                            key=f"desc_input_{var}_edit_{selected_indicator['id']}"
+                        )
                 st.session_state.current_var_descriptions = new_var_descriptions
             else:
                 st.warning("Nenhuma variável (letras) encontrada na fórmula. O resultado será um valor fixo.")
@@ -1461,7 +1469,8 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                  cols = st.columns(min(3, len(vars_list)))
                  for i, (var, desc) in enumerate(vars_list):
                      col_idx = i % len(cols)
-                     with cols[col_idx]: st.markdown(f"**{var}:** {desc or 'Sem descrição'}")
+                     with cols[col_idx]:
+                         st.markdown(f"**{var}:** {desc or 'Sem descrição'}")
         st.markdown("---")
 
         results = load_results()
@@ -1618,7 +1627,9 @@ def fill_indicator(SETORES, TEMA_PADRAO):
             if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
                  cols_header = st.columns([1.5] + [1] * len(selected_indicator["variaveis"]) + [1, 2, 2, 1])
                  with cols_header[0]: st.markdown("**Período**")
-                 for i, var in enumerate(selected_indicator["variaveis"].keys()): with cols_header[i+1]: st.markdown(f"**{var}**")
+                 for i, var in enumerate(selected_indicator["variaveis"].keys()):
+                     with cols_header[i+1]:
+                         st.markdown(f"**{var}**")
                  with cols_header[len(selected_indicator["variaveis"])+1]: st.markdown(f"**Resultado ({unidade_display})**")
                  with cols_header[len(selected_indicator["variaveis"])+2]: st.markdown("**Observações**")
                  with cols_header[len(selected_indicator["variaveis"])+3]: st.markdown("**Análise Crítica**")
@@ -1775,7 +1786,6 @@ def show_dashboard(SETORES, TEMA_PADRAO):
     for ind in filtered_indicators:
         ind_results = [r for r in results if r["indicator_id"] == ind["id"]]
         if ind_results:
-            indicators_with_results += 1
             df_results = pd.DataFrame(ind_results); df_results["data_referencia"] = pd.to_datetime(df_results["data_referencia"]); df_results = df_results.sort_values("data_referencia", ascending=False)
             last_result = float(df_results.iloc[0]["resultado"]); meta = float(ind.get("meta", 0.0))
             if ind["comparacao"] == "Maior é melhor":
@@ -2019,12 +2029,6 @@ def show_settings():
     if "last_backup_date" in config: st.markdown(f"**Último backup automático:** {config['last_backup_date']}")
     else: st.markdown("**Último backup automático:** Nunca executado")
 
-    # --- Backup e Restauração (Revisão Necessária) ---
-    # As funções backup_data e restore_data precisam ser reescritas para lidar com o DB.
-    # A abordagem mais robusta é usar pg_dump para backup do DB.
-    # Se você quiser manter o formato .bkp, as funções backup_data e restore_data
-    # precisariam carregar/salvar os dados do/para o DB usando as novas funções load_X/save_X.
-
     st.warning("As funcionalidades de backup e restauração precisam ser adaptadas para o banco de dados PostgreSQL.")
     st.info("Para backup do banco de dados, a ferramenta `pg_dump` é a mais recomendada.")
     st.info("Para restaurar, `pg_restore` ou `psql` podem ser usados.")
@@ -2032,10 +2036,9 @@ def show_settings():
     # Botão para criar backup manual (fora do expander)
     if st.button("⟳ Criar novo backup manual", help="Cria um backup manual de todos os dados do sistema."):
         with st.spinner("Criando backup manual..."):
-            # KEY_FILE deve ser acessível aqui
-            global KEY_FILE # Acessa a variável global KEY_FILE
-            generate_key(KEY_FILE) # Garante que a chave existe
-            cipher = initialize_cipher(KEY_FILE) # Inicializa o cipher
+            global KEY_FILE
+            generate_key(KEY_FILE)
+            cipher = initialize_cipher(KEY_FILE)
             backup_file = backup_data(cipher, tipo_backup="user")
             if backup_file:
                 st.success(f"Backup manual criado: {backup_file}")
@@ -2043,7 +2046,6 @@ def show_settings():
                 st.error("Falha ao criar o backup manual.")
 
     # Botão para restaurar backup (fora do expander)
-    # O diretório 'backups' precisa existir para listar os arquivos
     if not os.path.exists("backups"):
         os.makedirs("backups")
     backup_files = [f for f in os.listdir("backups") if f.startswith("backup_") and f.endswith(".bkp")]
@@ -2051,9 +2053,9 @@ def show_settings():
         selected_backup = st.selectbox("Selecione o backup para restaurar", backup_files)
         if st.button("⚙️ Restaurar arquivo de backup ️", help="Restaura os dados do sistema a partir de um arquivo de backup."):
             with st.spinner("Criando backup de segurança..."):
-                global KEY_FILE # Acessa a variável global KEY_FILE
-                generate_key(KEY_FILE) # Garante que a chave existe
-                cipher = initialize_cipher(KEY_FILE) # Inicializa o cipher
+                global KEY_FILE
+                generate_key(KEY_FILE)
+                cipher = initialize_cipher(KEY_FILE)
                 backup_file_antes_restauracao = backup_data(cipher, tipo_backup="seguranca")
                 if backup_file_antes_restauracao:
                     st.success(f"Backup de segurança criado: {backup_file_antes_restauracao}")
@@ -2441,7 +2443,6 @@ def main():
     # --- NOVO: Inicializa as tabelas do banco de dados ---
     create_tables_if_not_exists()
 
-    # Carrega configurações do DB para definir o tema (se aplicável)
     app_config = load_config()
 
     MENU_ICONS = define_menu_icons()
