@@ -22,6 +22,8 @@ import psycopg2
 from psycopg2 import sql
 from psycopg2.extras import Json # Para lidar com JSONB
 
+KEY_FILE = "secret.key"
+
 # --- Funções de Conexão e Criação de Tabelas do PostgreSQL ---
 
 def get_db_connection():
@@ -2614,7 +2616,6 @@ def main():
     MENU_ICONS = define_menu_icons()
 
     # Inicializar objeto de criptografia para backups .bkp
-    global KEY_FILE  # Declare global no início da função
     generate_key(KEY_FILE)
     cipher = initialize_cipher(KEY_FILE)
     
