@@ -484,31 +484,127 @@ def log_backup_action(action, file_name, BACKUP_LOG_FILE):
     log.append(log_entry)
     save_backup_log(log, BACKUP_LOG_FILE)
 
-def load_indicators(INDICATORS_FILE):
-    """Carrega os indicadores do arquivo."""
-    try:
-        with open(INDICATORS_FILE, "r") as f:
-            indicators = json.load(f)
-            # Garantir que cada indicador tem a estrutura esperada para fórmula e variáveis
-            for ind in indicators:
-                if "formula" not in ind:
-                    ind["formula"] = ""
-                if "variaveis" not in ind:
-                    ind["variaveis"] = {} # Dicionário {variavel: descricao}
+def load_indicators():
+    """
+    Carrega os indicadores do banco de dados PostgreSQL.
+    Retorna uma lista de dicionários de indicadores no formato esperado pela aplicação.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, nome, objetivo, formula, variaveis, unidade, meta, comparacao,
+                       tipo_grafico, responsavel, data_criacao, data_atualizacao
+                FROM indicadores;
+            """)
+            indicators_data = cur.fetchall()
+            
+            indicators = []
+            for row in indicators_data:
+                (id, nome, objetivo, formula, variaveis, unidade, meta, comparacao,
+                 tipo_grafico, responsavel, data_criacao, data_atualizacao) = row
+                
+                indicators.append({
+                    "id": id,
+                    "nome": nome,
+                    "objetivo": objetivo,
+                    "formula": formula if formula is not None else "",
+                    "variaveis": variaveis if variaveis is not None else {}, # JSONB é carregado como dict
+                    "unidade": unidade if unidade is not None else "",
+                    "meta": float(meta) if meta is not None else 0.0, # Converter de Decimal para float
+                    "comparacao": comparacao if comparacao is not None else "Maior é melhor",
+                    "tipo_grafico": tipo_grafico if tipo_grafico is not None else "Linha",
+                    "responsavel": responsavel if responsavel is not None else "Todos",
+                    "data_criacao": data_criacao.isoformat() if data_criacao else "",
+                    "data_atualizacao": data_atualizacao.isoformat() if data_atualizacao else ""
+                })
             return indicators
-    except FileNotFoundError:
-        return []
-    except json.JSONDecodeError:
-        st.error("Erro ao decodificar o arquivo de indicadores. O arquivo pode estar corrompido.")
-        return []
+        except psycopg2.Error as e:
+            print(f"Erro ao carregar indicadores do banco de dados: {e}")
+            # st.error(f"Erro ao carregar indicadores: {e}")
+            return []
+        finally:
+            cur.close()
+            conn.close()
+    return [] # Retorna lista vazia se a conexão falhar
 
-def save_indicators(indicators, INDICATORS_FILE):
-    """Salva os indicadores no arquivo."""
-    try:
-        with open(INDICATORS_FILE, "w") as f:
-            json.dump(indicators, f, indent=4)
-    except Exception as e:
-        st.error(f"Erro ao salvar o arquivo de indicadores: {e}")
+def save_indicators(indicators_data):
+    """
+    Salva os indicadores no banco de dados PostgreSQL.
+    Esta função sincroniza a lista 'indicators_data' com a tabela 'indicadores'.
+    Ela insere novos indicadores, atualiza os existentes e remove os que não estão mais na lista.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+
+            # Obter todos os IDs de indicadores existentes no banco de dados
+            cur.execute("SELECT id FROM indicadores;")
+            existing_indicator_ids_in_db = {row[0] for row in cur.fetchall()}
+
+            # IDs dos indicadores na lista que estamos salvando
+            current_indicator_ids_to_save = {ind["id"] for ind in indicators_data}
+
+            # Iterar sobre os indicadores fornecidos para inserir ou atualizar
+            for ind in indicators_data:
+                indicator_id = ind.get("id")
+                nome = ind.get("nome")
+                objetivo = ind.get("objetivo")
+                formula = ind.get("formula")
+                variaveis = Json(ind.get("variaveis", {})) # Converter dict para Json para JSONB
+                unidade = ind.get("unidade")
+                meta = ind.get("meta")
+                comparacao = ind.get("comparacao")
+                tipo_grafico = ind.get("tipo_grafico")
+                responsavel = ind.get("responsavel")
+                
+                # data_criacao e data_atualizacao são gerenciadas pelo banco de dados
+                # na inserção e atualização, respectivamente.
+
+                if indicator_id in existing_indicator_ids_in_db:
+                    # Atualizar indicador existente
+                    cur.execute("""
+                        UPDATE indicadores
+                        SET nome = %s, objetivo = %s, formula = %s, variaveis = %s,
+                            unidade = %s, meta = %s, comparacao = %s, tipo_grafico = %s,
+                            responsavel = %s, data_atualizacao = CURRENT_TIMESTAMP
+                        WHERE id = %s;
+                    """, (nome, objetivo, formula, variaveis, unidade, meta, comparacao,
+                          tipo_grafico, responsavel, indicator_id))
+                else:
+                    # Inserir novo indicador
+                    # Gerar um novo ID se não houver um (ou se for um novo indicador)
+                    if not indicator_id:
+                        indicator_id = datetime.now().strftime("%Y%m%d%H%M%S%f") # ID único baseado em timestamp com microssegundos
+                        ind["id"] = indicator_id # Atualiza o ID no objeto Python também
+
+                    cur.execute("""
+                        INSERT INTO indicadores (id, nome, objetivo, formula, variaveis,
+                                                 unidade, meta, comparacao, tipo_grafico,
+                                                 responsavel, data_criacao, data_atualizacao)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                    """, (indicator_id, nome, objetivo, formula, variaveis, unidade, meta, comparacao,
+                          tipo_grafico, responsavel))
+            
+            # Remover indicadores do banco de dados que não estão mais na lista 'indicators_data'
+            indicators_to_delete = existing_indicator_ids_in_db - current_indicator_ids_to_save
+            for id_to_delete in indicators_to_delete:
+                cur.execute("DELETE FROM indicadores WHERE id = %s;", (id_to_delete,))
+                print(f"Indicador com ID '{id_to_delete}' removido do banco de dados.")
+
+            conn.commit()
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao salvar indicadores no banco de dados: {e}")
+            # st.error(f"Erro ao salvar indicadores: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False # Retorna False se a conexão falhar
 
 def log_indicator_action(action, indicator_id, INDICATOR_LOG_FILE):
     """Registra uma ação de indicador no log."""
