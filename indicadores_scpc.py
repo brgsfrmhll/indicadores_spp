@@ -2607,6 +2607,7 @@ def keep_last_backups(BACKUP_DIR, num_backups):
 # --- Função Principal da Aplicação Streamlit ---
 
 def main():
+    global KEY_FILE  # Declare global no início da função
     configure_page()
     initialize_session_state()
     configure_locale()
