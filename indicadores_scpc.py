@@ -1453,8 +1453,10 @@ def fill_indicator(SETORES, TEMA_PADRAO):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"**Objetivo:** {selected_indicator['objetivo']}")
-            if selected_indicator.get("formula"): st.markdown(f"**Fórmula de Cálculo:** `{selected_indicator['formula']}`")
-            else: st.markdown(f"**Fórmula de Cálculo:** Não definida (preenchimento direto)")
+            if selected_indicator.get("formula"): 
+                st.markdown(f"**Fórmula de Cálculo:** `{selected_indicator['formula']}`")
+            else: 
+                st.markdown(f"**Fórmula de Cálculo:** Não definida (preenchimento direto)")
             st.markdown(f"**Unidade do Resultado:** {selected_indicator.get('unidade', 'Não definida')}")
         with col2:
             meta_display = f"{float(selected_indicator.get('meta', 0.0)):.2f}{selected_indicator.get('unidade', '')}"
@@ -1463,14 +1465,15 @@ def fill_indicator(SETORES, TEMA_PADRAO):
             st.markdown(f"**Setor Responsável:** {selected_indicator['responsavel']}")
 
         if selected_indicator.get("variaveis"):
-             st.markdown("---"); st.subheader("Variáveis do Indicador")
-             vars_list = list(selected_indicator["variaveis"].items())
-             if vars_list:
-                 cols = st.columns(min(3, len(vars_list)))
-                 for i, (var, desc) in enumerate(vars_list):
-                     col_idx = i % len(cols)
-                     with cols[col_idx]:
-                         st.markdown(f"**{var}:** {desc or 'Sem descrição'}")
+            st.markdown("---")
+            st.subheader("Variáveis do Indicador")
+            vars_list = list(selected_indicator["variaveis"].items())
+            if vars_list:
+                cols = st.columns(min(3, len(vars_list)))
+                for i, (var, desc) in enumerate(vars_list):
+                    col_idx = i % len(cols)
+                    with cols[col_idx]:
+                        st.markdown(f"**{var}:** {desc or 'Sem descrição'}")
         st.markdown("---")
 
         results = load_results()
@@ -1482,14 +1485,18 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                 try:
                     date_ref = pd.to_datetime(result["data_referencia"]).to_period('M')
                     filled_periods.add(date_ref)
-                except: pass
+                except: 
+                    pass
 
-        current_date = datetime.now(); available_periods = []
+        current_date = datetime.now()
+        available_periods = []
         for year in range(current_date.year - 5, current_date.year + 1):
             for month in range(1, 13):
                 period = pd.Period(year=year, month=month, freq='M')
-                if period > pd.Period(current_date, freq='M'): continue
-                if period not in filled_periods: available_periods.append(period)
+                if period > pd.Period(current_date, freq='M'): 
+                    continue
+                if period not in filled_periods: 
+                    available_periods.append(period)
 
         if not available_periods:
             st.info("Todos os períodos relevantes já foram preenchidos para este indicador.")
@@ -1504,92 +1511,179 @@ def fill_indicator(SETORES, TEMA_PADRAO):
 
                 calculated_result = None
                 if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
-                    st.markdown("#### Valores das Variáveis"); st.info(f"Insira os valores para calcular o resultado usando a fórmula: `{selected_indicator['formula']}`")
+                    st.markdown("#### Valores das Variáveis")
+                    st.info(f"Insira os valores para calcular o resultado usando a fórmula: `{selected_indicator['formula']}`")
                     vars_to_fill = list(selected_indicator["variaveis"].items())
                     if vars_to_fill:
                         variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"
-                        if variable_values_key not in st.session_state: st.session_state[variable_values_key] = {}
+                        if variable_values_key not in st.session_state: 
+                            st.session_state[variable_values_key] = {}
                         cols = st.columns(min(3, len(vars_to_fill)))
                         for i, (var, desc) in enumerate(vars_to_fill):
                             col_idx = i % len(cols)
                             with cols[col_idx]:
                                 default_value = st.session_state[variable_values_key].get(var, 0.0)
-                                st.session_state[variable_values_key][var] = st.number_input(f"{var} ({desc or 'Sem descrição'})", value=float(default_value), step=0.01, format="%.2f", key=f"var_input_{var}_{selected_indicator['id']}_{selected_period_str}")
+                                st.session_state[variable_values_key][var] = st.number_input(
+                                    f"{var} ({desc or 'Sem descrição'})", 
+                                    value=float(default_value), 
+                                    step=0.01, 
+                                    format="%.2f", 
+                                    key=f"var_input_{var}_{selected_indicator['id']}_{selected_period_str}"
+                                )
                         test_button_clicked = st.form_submit_button("✨ Calcular Resultado")
                         calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
                         if st.session_state.get(calculated_result_state_key) is not None:
-                             calculated_result = st.session_state[calculated_result_state_key]
-                             result_display = f"{calculated_result:.2f}{selected_indicator.get('unidade', '')}"
-                             st.markdown(f"**Resultado Calculado:** **{result_display}**")
-                             meta_valor = float(selected_indicator.get('meta', 0.0)); comparacao_tipo = selected_indicator['comparacao']
-                             if comparacao_tipo == "Maior é melhor":
-                                 if calculated_result >= meta_valor: st.success(f"🎉 Meta Atingida! O resultado ({result_display}) é maior ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
-                                 else: st.warning(f"⚠️ Meta Não Atingida. O resultado ({result_display}) é menor que a meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
-                             elif comparacao_tipo == "Menor é melhor":
-                                 if calculated_result <= meta_valor: st.success(f"🎉 Meta Atingida! O resultado ({result_display}) é menor ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
-                                 else: st.warning(f"⚠️ Meta Não Atingida. O resultado ({result_display}) é maior que a meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+                            calculated_result = st.session_state[calculated_result_state_key]
+                            result_display = f"{calculated_result:.2f}{selected_indicator.get('unidade', '')}"
+                            st.markdown(f"**Resultado Calculado:** **{result_display}**")
+                            meta_valor = float(selected_indicator.get('meta', 0.0))
+                            comparacao_tipo = selected_indicator['comparacao']
+                            if comparacao_tipo == "Maior é melhor":
+                                if calculated_result >= meta_valor: 
+                                    st.success(f"🎉 Meta Atingida! O resultado ({result_display}) é maior ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+                                else: 
+                                    st.warning(f"⚠️ Meta Não Atingida. O resultado ({result_display}) é menor que a meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+                            elif comparacao_tipo == "Menor é melhor":
+                                if calculated_result <= meta_valor: 
+                                    st.success(f"🎉 Meta Atingida! O resultado ({result_display}) é menor ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+                                else: 
+                                    st.warning(f"⚠️ Meta Não Atingida. O resultado ({result_display}) é maior que a meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
                     else:
-                         st.warning("O indicador tem uma fórmula, mas nenhuma variável definida. O resultado será um valor fixo.")
-                         resultado_input_value = st.number_input("Resultado", step=0.01, format="%.2f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
-                         variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"
-                         st.session_state[variable_values_key] = {}
-                         calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
-                         st.session_state[calculated_result_state_key] = None
+                        st.warning("O indicador tem uma fórmula, mas nenhuma variável definida. O resultado será um valor fixo.")
+                        resultado_input_value = st.number_input(
+                            "Resultado", 
+                            step=0.01, 
+                            format="%.2f", 
+                            key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}"
+                        )
+                        variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"
+                        st.session_state[variable_values_key] = {}
+                        calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
+                        st.session_state[calculated_result_state_key] = None
                 else:
-                    resultado_input_value = st.number_input("Resultado", step=0.01, format="%.2f", key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}")
+                    resultado_input_value = st.number_input(
+                        "Resultado", 
+                        step=0.01, 
+                        format="%.2f", 
+                        key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}"
+                    )
                     variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"
                     st.session_state[variable_values_key] = {}
                     calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
                     st.session_state[calculated_result_state_key] = None
 
-                observacoes = st.text_area("Observações (opcional)", placeholder="Adicione informações relevantes sobre este resultado", key=f"obs_input_{selected_indicator['id']}_{selected_period_str}")
+                observacoes = st.text_area(
+                    "Observações (opcional)", 
+                    placeholder="Adicione informações relevantes sobre este resultado", 
+                    key=f"obs_input_{selected_indicator['id']}_{selected_period_str}"
+                )
                 st.markdown("### Análise Crítica (5W2H)")
                 st.markdown("""<div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 15px;"><p style="margin: 0; font-size: 14px;">A metodologia 5W2H ajuda a estruturar a análise crítica de forma completa, abordando todos os aspectos relevantes da situação.</p></div>""", unsafe_allow_html=True)
-                what = st.text_area("O que (What)", placeholder="O que está acontecendo? Qual é a situação atual do indicador?", key=f"what_input_{selected_indicator['id']}_{selected_period_str}")
-                why = st.text_area("Por que (Why)", placeholder="Por que isso está acontecendo? Quais são as causas?", key=f"why_input_{selected_indicator['id']}_{selected_period_str}")
-                who = st.text_area("Quem (Who)", placeholder="Quem é responsável? Quem está envolvido?", key=f"who_input_{selected_indicator['id']}_{selected_period_str}")
-                when = st.text_area("Quando (When)", placeholder="Quando isso aconteceu? Qual é o prazo para resolução?", key=f"when_input_{selected_indicator['id']}_{selected_period_str}")
-                where = st.text_area("Onde (Where)", placeholder="Onde ocorre a situação? Em qual processo ou área?", key=f"where_input_{selected_indicator['id']}_{selected_period_str}")
-                how = st.text_area("Como (How)", placeholder="Como resolver a situação? Quais ações devem ser tomadas?", key=f"how_input_{selected_indicator['id']}_{selected_period_str}")
-                howMuch = st.text_area("Quanto custa (How Much)", placeholder="Quanto custará implementar a solução? Quais recursos são necessários?", key=f"howmuch_input_{selected_indicator['id']}_{selected_period_str}")
+                what = st.text_area(
+                    "O que (What)", 
+                    placeholder="O que está acontecendo? Qual é a situação atual do indicador?", 
+                    key=f"what_input_{selected_indicator['id']}_{selected_period_str}"
+                )
+                why = st.text_area(
+                    "Por que (Why)", 
+                    placeholder="Por que isso está acontecendo? Quais são as causas?", 
+                    key=f"why_input_{selected_indicator['id']}_{selected_period_str}"
+                )
+                who = st.text_area(
+                    "Quem (Who)", 
+                    placeholder="Quem é responsável? Quem está envolvido?", 
+                    key=f"who_input_{selected_indicator['id']}_{selected_period_str}"
+                )
+                when = st.text_area(
+                    "Quando (When)", 
+                    placeholder="Quando isso aconteceu? Qual é o prazo para resolução?", 
+                    key=f"when_input_{selected_indicator['id']}_{selected_period_str}"
+                )
+                where = st.text_area(
+                    "Onde (Where)", 
+                    placeholder="Onde ocorre a situação? Em qual processo ou área?", 
+                    key=f"where_input_{selected_indicator['id']}_{selected_period_str}"
+                )
+                how = st.text_area(
+                    "Como (How)", 
+                    placeholder="Como resolver a situação? Quais ações devem ser tomadas?", 
+                    key=f"how_input_{selected_indicator['id']}_{selected_period_str}"
+                )
+                howMuch = st.text_area(
+                    "Quanto custa (How Much)", 
+                    placeholder="Quanto custará implementar a solução? Quais recursos são necessários?", 
+                    key=f"howmuch_input_{selected_indicator['id']}_{selected_period_str}"
+                )
                 submitted = st.form_submit_button("✔️ Salvar")
 
             if test_button_clicked:
-                 formula_str = selected_indicator.get("formula", "")
-                 variable_values = st.session_state.get(variable_values_key, {})
-                 if not formula_str: st.warning("⚠️ Este indicador não possui fórmula definida para calcular."); st.session_state[calculated_result_state_key] = None
-                 elif not variable_values and formula_str:
-                      try: calculated_result = float(sympify(formula_str)); st.session_state[calculated_result_state_key] = calculated_result
-                      except (SympifyError, ValueError) as e: st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe ou se todas as variáveis foram inseridas. Detalhes: {e}"); st.session_state[calculated_result_state_key] = None
-                      except Exception as e: st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}"); st.session_state[calculated_result_state_key] = None
-                 elif variable_values:
-                      try:
-                          var_symbols = symbols(list(variable_values.keys())); expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
-                          subs_dict = {symbols(var): float(value) for var, value in variable_values.items()}; calculated_result = float(expr.subs(subs_dict))
-                          st.session_state[calculated_result_state_key] = calculated_result
-                      except SympifyError as e: st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}"); st.session_state[calculated_result_state_key] = None
-                      except ZeroDivisionError: st.error("❌ Erro ao calcular a fórmula: Divisão por zero com os valores de teste fornecidos."); st.session_state[calculated_result_state_key] = None
-                      except Exception as e:
-                           if "cannot create 'dict_keys' instances" in str(e): st.error("❌ Erro interno ao processar as variáveis da fórmula. Verifique se as variáveis na fórmula correspondem às variáveis definidas para o indicador.")
-                           else: st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}"); st.session_state[calculated_result_state_key] = None
-                 st.rerun()
+                formula_str = selected_indicator.get("formula", "")
+                variable_values = st.session_state.get(variable_values_key, {})
+                if not formula_str: 
+                    st.warning("⚠️ Este indicador não possui fórmula definida para calcular.")
+                    st.session_state[calculated_result_state_key] = None
+                elif not variable_values and formula_str:
+                    try: 
+                        calculated_result = float(sympify(formula_str))
+                        st.session_state[calculated_result_state_key] = calculated_result
+                    except (SympifyError, ValueError) as e: 
+                        st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe ou se todas as variáveis foram inseridas. Detalhes: {e}")
+                        st.session_state[calculated_result_state_key] = None
+                    except Exception as e: 
+                        st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                        st.session_state[calculated_result_state_key] = None
+                elif variable_values:
+                    try:
+                        var_symbols = symbols(list(variable_values.keys()))
+                        expr = sympify(formula_str, locals=dict(zip(variable_values.keys(), var_symbols)))
+                        subs_dict = {symbols(var): float(value) for var, value in variable_values.items()}
+                        calculated_result = float(expr.subs(subs_dict))
+                        st.session_state[calculated_result_state_key] = calculated_result
+                    except SympifyError as e: 
+                        st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
+                        st.session_state[calculated_result_state_key] = None
+                    except ZeroDivisionError: 
+                        st.error("❌ Erro ao calcular a fórmula: Divisão por zero com os valores de teste fornecidos.")
+                        st.session_state[calculated_result_state_key] = None
+                    except Exception as e:
+                        if "cannot create 'dict_keys' instances" in str(e): 
+                            st.error("❌ Erro interno ao processar as variáveis da fórmula. Verifique se as variáveis na fórmula correspondem às variáveis definidas para o indicador.")
+                        else: 
+                            st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                        st.session_state[calculated_result_state_key] = None
+                st.rerun()
             elif submitted:
-                final_result_to_save = None; values_to_save = {}
+                final_result_to_save = None
+                values_to_save = {}
                 if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
                     final_result_to_save = st.session_state.get(calculated_result_state_key)
                     values_to_save = st.session_state.get(variable_values_key, {})
-                    if final_result_to_save is None: st.warning("⚠️ Por favor, calcule o resultado antes de salvar."); return
+                    if final_result_to_save is None: 
+                        st.warning("⚠️ Por favor, calcule o resultado antes de salvar.")
+                        return
                 else:
                     final_result_to_save = resultado_input_value
                     values_to_save = {}
 
                 if final_result_to_save is not None:
                     data_referencia_iso = datetime(selected_year, selected_month, 1).isoformat()
-                    analise_critica = {"what": what, "why": why, "who": who, "when": when, "where": where, "how": how, "howMuch": howMuch}
-                    campos_preenchidos = sum(1 for campo in analise_critica.values() if campo and campo.strip()); total_campos = 7
-                    if campos_preenchidos == 0: status_analise = "❌ Não preenchida"
-                    elif campos_preenchidos == total_campos: status_analise = "✅ Preenchida completamente"
-                    else: status_analise = f"⚠️ Preenchida parcialmente ({campos_preenchidos}/{total_campos})"
+                    analise_critica = {
+                        "what": what, 
+                        "why": why, 
+                        "who": who, 
+                        "when": when, 
+                        "where": where, 
+                        "how": how, 
+                        "howMuch": howMuch
+                    }
+                    campos_preenchidos = sum(1 for campo in analise_critica.values() if campo and campo.strip())
+                    total_campos = 7
+                    if campos_preenchidos == 0: 
+                        status_analise = "❌ Não preenchida"
+                    elif campos_preenchidos == total_campos: 
+                        status_analise = "✅ Preenchida completamente"
+                    else: 
+                        status_analise = f"⚠️ Preenchida parcialmente ({campos_preenchidos}/{total_campos})"
                     analise_critica["status_preenchimento"] = status_analise
                     
                     new_result = {
@@ -1613,8 +1707,10 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                     with st.spinner("Salvando resultado..."):
                         st.success(f"✅ Resultado adicionado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
                         time.sleep(2)
-                    if variable_values_key in st.session_state: del st.session_state[variable_values_key]
-                    if calculated_result_state_key in st.session_state: del st.session_state[calculated_result_state_key]
+                    if variable_values_key in st.session_state: 
+                        del st.session_state[variable_values_key]
+                    if calculated_result_state_key in st.session_state: 
+                        del st.session_state[calculated_result_state_key]
                     scroll_to_top()
                     st.rerun()
                 else:
@@ -1625,86 +1721,126 @@ def fill_indicator(SETORES, TEMA_PADRAO):
             indicator_results_sorted = sorted(indicator_results, key=lambda x: x.get("data_referencia", ""), reverse=True)
             unidade_display = selected_indicator.get('unidade', '')
             if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
-                 cols_header = st.columns([1.5] + [1] * len(selected_indicator["variaveis"]) + [1, 2, 2, 1])
-                 with cols_header[0]: st.markdown("**Período**")
-                 for i, var in enumerate(selected_indicator["variaveis"].keys()):
-                     with cols_header[i+1]:
-                         st.markdown(f"**{var}**")
-                 with cols_header[len(selected_indicator["variaveis"])+1]: st.markdown(f"**Resultado ({unidade_display})**")
-                 with cols_header[len(selected_indicator["variaveis"])+2]: st.markdown("**Observações**")
-                 with cols_header[len(selected_indicator["variaveis"])+3]: st.markdown("**Análise Crítica**")
-                 with cols_header[len(selected_indicator["variaveis"])+4]: st.markdown("**Ações**")
-                 for result in indicator_results_sorted:
-                      cols_data = st.columns([1.5] + [1] * len(selected_indicator["variaveis"]) + [1, 2, 2, 1])
-                      data_referencia = result.get('data_referencia')
-                      if data_referencia:
-                           with cols_data[0]: st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
-                           valores_vars = result.get("valores_variaveis", {})
-                           for i, var in enumerate(selected_indicator["variaveis"].keys()):
-                                with cols_data[i+1]:
-                                     var_value = valores_vars.get(var)
-                                     if isinstance(var_value, (int, float)): st.write(f"{var_value:.2f}")
-                                     else: st.write('N/A')
-                           with cols_data[len(selected_indicator["variaveis"])+1]:
-                            result_value = result.get('resultado'); unidade = selected_indicator.get('unidade', ''); meta = selected_indicator.get('meta', None); comparacao = selected_indicator.get('comparacao', 'Maior é melhor')
+                cols_header = st.columns([1.5] + [1] * len(selected_indicator["variaveis"]) + [1, 2, 2, 1])
+                with cols_header[0]: 
+                    st.markdown("**Período**")
+                for i, var in enumerate(selected_indicator["variaveis"].keys()):
+                    with cols_header[i+1]:
+                        st.markdown(f"**{var}**")
+                with cols_header[len(selected_indicator["variaveis"])+1]: 
+                    st.markdown(f"**Resultado ({unidade_display})**")
+                with cols_header[len(selected_indicator["variaveis"])+2]: 
+                    st.markdown("**Observações**")
+                with cols_header[len(selected_indicator["variaveis"])+3]: 
+                    st.markdown("**Análise Crítica**")
+                with cols_header[len(selected_indicator["variaveis"])+4]: 
+                    st.markdown("**Ações**")
+                
+                for result in indicator_results_sorted:
+                    cols_data = st.columns([1.5] + [1] * len(selected_indicator["variaveis"]) + [1, 2, 2, 1])
+                    data_referencia = result.get('data_referencia')
+                    if data_referencia:
+                        with cols_data[0]: 
+                            st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
+                        valores_vars = result.get("valores_variaveis", {})
+                        for i, var in enumerate(selected_indicator["variaveis"].keys()):
+                            with cols_data[i+1]:
+                                var_value = valores_vars.get(var)
+                                if isinstance(var_value, (int, float)): 
+                                    st.write(f"{var_value:.2f}")
+                                else: 
+                                    st.write('N/A')
+                        with cols_data[len(selected_indicator["variaveis"])+1]:
+                            result_value = result.get('resultado')
+                            unidade = selected_indicator.get('unidade', '')
+                            meta = selected_indicator.get('meta', None)
+                            comparacao = selected_indicator.get('comparacao', 'Maior é melhor')
                             icone = ":white_circle:"
                             try:
-                                resultado_float = float(result_value); meta_float = float(meta)
-                                if comparacao == "Maior é melhor": icone = ":white_check_mark:" if resultado_float >= meta_float else ":x:"
-                                elif comparacao == "Menor é melhor": icone = ":white_check_mark:" if resultado_float <= meta_float else ":x:"
-                            except (TypeError, ValueError): pass
-                            if isinstance(result_value, (int, float)): st.markdown(f"{icone} **{result_value:.2f}{unidade}**")
-                            else: st.write('N/A')
-                           with cols_data[len(selected_indicator["variaveis"])+2]: st.write(result.get('observacao', 'N/A'))
-                           with cols_data[len(selected_indicator["variaveis"])+3]:
-                                analise_critica_dict = result.get('analise_critica', {})
-                                status_analise = get_analise_status(analise_critica_dict)
-                                st.write(status_analise)
-                                if any(analise_critica_dict.get(key, "").strip() for key in ["what", "why", "who", "when", "where", "how", "howMuch"]):
-                                     with st.expander("Ver Análise"):
-                                          st.markdown("**O que:** " + analise_critica_dict.get("what", ""))
-                                          st.markdown("**Por que:** " + analise_critica_dict.get("why", ""))
-                                          st.markdown("**Quem:** " + analise_critica_dict.get("who", ""))
-                                          st.markdown("**Quando:** " + analise_critica_dict.get("when", ""))
-                                          st.markdown("**Onde:** " + analise_critica_dict.get("where", ""))
-                                          st.markdown("**Como:** " + analise_critica_dict.get("how", ""))
-                                          st.markdown("**Quanto custa:** " + analise_critica_dict.get("howMuch", ""))
-                           with cols_data[len(selected_indicator["variaveis"])+4]:
-                                if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}"):
-                                    delete_result(selected_indicator['id'], data_referencia, st.session_state.username)
-                      else: st.warning("Resultado com data de referência ausente. Impossível exibir/excluir.")
+                                resultado_float = float(result_value)
+                                meta_float = float(meta)
+                                if comparacao == "Maior é melhor": 
+                                    icone = ":white_check_mark:" if resultado_float >= meta_float else ":x:"
+                                elif comparacao == "Menor é melhor": 
+                                    icone = ":white_check_mark:" if resultado_float <= meta_float else ":x:"
+                            except (TypeError, ValueError): 
+                                pass
+                            if isinstance(result_value, (int, float)): 
+                                st.markdown(f"{icone} **{result_value:.2f}{unidade}**")
+                            else: 
+                                st.write('N/A')
+                        with cols_data[len(selected_indicator["variaveis"])+2]: 
+                            st.write(result.get('observacao', 'N/A'))
+                        with cols_data[len(selected_indicator["variaveis"])+3]:
+                            analise_critica_dict = result.get('analise_critica', {})
+                            status_analise = get_analise_status(analise_critica_dict)
+                            st.write(status_analise)
+                            if any(analise_critica_dict.get(key, "").strip() for key in ["what", "why", "who", "when", "where", "how", "howMuch"]):
+                                with st.expander("Ver Análise"):
+                                    st.markdown("**O que:** " + analise_critica_dict.get("what", ""))
+                                    st.markdown("**Por que:** " + analise_critica_dict.get("why", ""))
+                                    st.markdown("**Quem:** " + analise_critica_dict.get("who", ""))
+                                    st.markdown("**Quando:** " + analise_critica_dict.get("when", ""))
+                                    st.markdown("**Onde:** " + analise_critica_dict.get("where", ""))
+                                    st.markdown("**Como:** " + analise_critica_dict.get("how", ""))
+                                    st.markdown("**Quanto custa:** " + analise_critica_dict.get("howMuch", ""))
+                        with cols_data[len(selected_indicator["variaveis"])+4]:
+                            if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}"):
+                                delete_result(selected_indicator['id'], data_referencia, st.session_state.username)
+                    else: 
+                        st.warning("Resultado com data de referência ausente. Impossível exibir/excluir.")
             else:
-                 col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
-                 with col1: st.markdown("**Período**"); with col2: st.markdown(f"**Resultado ({unidade_display})**"); with col3: st.markdown("**Observações**"); with col4: st.markdown("**Análise Crítica**"); with col5: st.markdown("**Data de Atualização**"); with col6: st.markdown("**Ações**")
-                 for result in indicator_results_sorted:
-                      data_referencia = result.get('data_referencia')
-                      if data_referencia:
-                           col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
-                           with col1: st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
-                           with col2:
-                                result_value = result.get('resultado')
-                                if isinstance(result_value, (int, float)): st.write(f"{result_value:.2f}{unidade_display}")
-                                else: st.write('N/A')
-                           with col3: st.write(result.get('observacao', 'N/A'))
-                           with col4:
-                                analise_critica_dict = result.get('analise_critica', {})
-                                status_analise = get_analise_status(analise_critica_dict)
-                                st.write(status_analise)
-                                if any(analise_critica_dict.get(key, "").strip() for key in ["what", "why", "who", "when", "where", "how", "howMuch"]):
-                                     with st.expander("Ver Análise"):
-                                          st.markdown("**O que:** " + analise_critica_dict.get("what", ""))
-                                          st.markdown("**Por que:** " + analise_critica_dict.get("why", ""))
-                                          st.markdown("**Quem:** " + analise_critica_dict.get("who", ""))
-                                          st.markdown("**Quando:** " + analise_critica_dict.get("when", ""))
-                                          st.markdown("**Onde:** " + analise_critica_dict.get("where", ""))
-                                          st.markdown("**Como:** " + analise_critica_dict.get("how", ""))
-                                          st.markdown("**Quanto custa:** " + analise_critica_dict.get("howMuch", ""))
-                           with col5: st.write(pd.to_datetime(result.get('data_atualizacao')).strftime("%d/%m/%Y %H:%M") if result.get('data_atualizacao') else 'N/A')
-                           with col6:
-                                if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}"):
-                                    delete_result(selected_indicator['id'], data_referencia, st.session_state.username)
-                      else: st.warning("Resultado com data de referência ausente. Impossível exibir/excluir.")
-        else: st.info("Nenhum resultado registrado para este indicador.")
+                # Aqui está a linha problemática, corrigida com quebras de linha
+                col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
+                with col1: 
+                    st.markdown("**Período**")
+                with col2: 
+                    st.markdown(f"**Resultado ({unidade_display})**")
+                with col3: 
+                    st.markdown("**Observações**")
+                with col4: 
+                    st.markdown("**Análise Crítica**")
+                with col5: 
+                    st.markdown("**Data de Atualização**")
+                with col6: 
+                    st.markdown("**Ações**")
+                
+                for result in indicator_results_sorted:
+                    data_referencia = result.get('data_referencia')
+                    if data_referencia:
+                        col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 2, 2, 2, 1])
+                        with col1: 
+                            st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
+                        with col2:
+                            result_value = result.get('resultado')
+                            if isinstance(result_value, (int, float)): 
+                                st.write(f"{result_value:.2f}{unidade_display}")
+                            else: 
+                                st.write('N/A')
+                        with col3: 
+                            st.write(result.get('observacao', 'N/A'))
+                        with col4:
+                            analise_critica_dict = result.get('analise_critica', {})
+                            status_analise = get_analise_status(analise_critica_dict)
+                            st.write(status_analise)
+                            if any(analise_critica_dict.get(key, "").strip() for key in ["what", "why", "who", "when", "where", "how", "howMuch"]):
+                                with st.expander("Ver Análise"):
+                                    st.markdown("**O que:** " + analise_critica_dict.get("what", ""))
+                                    st.markdown("**Por que:** " + analise_critica_dict.get("why", ""))
+                                    st.markdown("**Quem:** " + analise_critica_dict.get("who", ""))
+                                    st.markdown("**Quando:** " + analise_critica_dict.get("when", ""))
+                                    st.markdown("**Onde:** " + analise_critica_dict.get("where", ""))
+                                    st.markdown("**Como:** " + analise_critica_dict.get("how", ""))
+                                    st.markdown("**Quanto custa:** " + analise_critica_dict.get("howMuch", ""))
+                        with col5: 
+                            st.write(pd.to_datetime(result.get('data_atualizacao')).strftime("%d/%m/%Y %H:%M") if result.get('data_atualizacao') else 'N/A')
+                        with col6:
+                            if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}"):
+                                delete_result(selected_indicator['id'], data_referencia, st.session_state.username)
+                    else: 
+                        st.warning("Resultado com data de referência ausente. Impossível exibir/excluir.")
+        else: 
+            st.info("Nenhum resultado registrado para este indicador.")
 
         st.markdown("---")
         all_results = load_results()
@@ -1713,28 +1849,34 @@ def fill_indicator(SETORES, TEMA_PADRAO):
 
         with st.expander("📜 Log de Preenchimentos (clique para visualizar)", expanded=False):
             if log_results:
-                log_data_list = []; unidade_log = selected_indicator.get('unidade', '')
+                log_data_list = []
+                unidade_log = selected_indicator.get('unidade', '')
                 for r in log_results:
-                     result_saved_display = r.get("resultado");
-                     if isinstance(result_saved_display, (int, float)): result_saved_display = f"{result_saved_display:.2f}{unidade_log}"
-                     else: result_saved_display = "N/A"
-                     valores_vars = r.get("valores_variaveis", {});
-                     if valores_vars: valores_vars_display = ", ".join([f"{v}={float(val):.2f}" if isinstance(val, (int, float)) else f"{v}={val}" for v, val in valores_vars.items()])
-                     else: valores_vars_display = "N/A"
-                     log_entry = {
-                          "Período": pd.to_datetime(r.get("data_referencia")).strftime("%B/%Y") if r.get("data_referencia") else "N/A",
-                          "Resultado Salvo": result_saved_display,
-                          "Valores Variáveis": valores_vars_display,
-                          "Usuário": r.get("usuario", "System"),
-                          "Status Análise Crítica": get_analise_status(r.get("analise_critica", {})),
-                          "Data/Hora Preenchimento": pd.to_datetime(r.get("data_atualizacao", r.get("data_criacao", datetime.now().isoformat()))).strftime("%d/%m/%Y %H:%M")
-                     }
-                     log_data_list.append(log_entry)
+                    result_saved_display = r.get("resultado")
+                    if isinstance(result_saved_display, (int, float)): 
+                        result_saved_display = f"{result_saved_display:.2f}{unidade_log}"
+                    else: 
+                        result_saved_display = "N/A"
+                    valores_vars = r.get("valores_variaveis", {})
+                    if valores_vars: 
+                        valores_vars_display = ", ".join([f"{v}={float(val):.2f}" if isinstance(val, (int, float)) else f"{v}={val}" for v, val in valores_vars.items()])
+                    else: 
+                        valores_vars_display = "N/A"
+                    log_entry = {
+                        "Período": pd.to_datetime(r.get("data_referencia")).strftime("%B/%Y") if r.get("data_referencia") else "N/A",
+                        "Resultado Salvo": result_saved_display,
+                        "Valores Variáveis": valores_vars_display,
+                        "Usuário": r.get("usuario", "System"),
+                        "Status Análise Crítica": get_analise_status(r.get("analise_critica", {})),
+                        "Data/Hora Preenchimento": pd.to_datetime(r.get("data_atualizacao", r.get("data_criacao", datetime.now().isoformat()))).strftime("%d/%m/%Y %H:%M")
+                    }
+                    log_data_list.append(log_entry)
                 log_df = pd.DataFrame(log_data_list)
                 cols_order = ["Período", "Resultado Salvo", "Valores Variáveis", "Usuário", "Status Análise Crítica", "Data/Hora Preenchimento"]
                 log_df = log_df[cols_order]
                 st.dataframe(log_df, use_container_width=True)
-            else: st.info("Nenhum registro de preenchimento encontrado para este indicador.")
+            else: 
+                st.info("Nenhum registro de preenchimento encontrado para este indicador.")
     st.markdown('</div>', unsafe_allow_html=True)
     
 def get_analise_status(analise_dict):
