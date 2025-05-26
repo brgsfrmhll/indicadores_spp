@@ -1020,11 +1020,24 @@ def show_login_page():
         st.markdown("<p style='text-align: center; font-size: 12px; color: #78909C; margin-top: 30px;'>© 2025 Portal de Indicadores - Santa Casa</p>", unsafe_allow_html=True)
 
 def verify_credentials(username, password):
-    """Verifica as credenciais do usuário."""
-    users = load_users()
-    if username in users:
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
-        return hashed_password == users[username].get("password", "")
+    """Verifica as credenciais do usuário diretamente do banco de dados."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT password_hash FROM usuarios WHERE username = %s;", (username,))
+            result = cur.fetchone()
+            if result:
+                stored_hash = result[0]
+                input_hash = hashlib.sha256(password.encode()).hexdigest()
+                return stored_hash == input_hash
+            return False
+        except psycopg2.Error as e:
+            print(f"Erro ao verificar credenciais: {e}")
+            return False
+        finally:
+            cur.close()
+            conn.close()
     return False
 
 def get_user_type(username):
