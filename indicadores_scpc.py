@@ -16,9 +16,16 @@ from cryptography.fernet import Fernet
 from pathlib import Path  # Adicione esta linha
 from sympy import symbols, sympify, SympifyError # Para cálculo seguro e detecção de símbolos
 from streamlit_scroll_to_top import scroll_to_here
+import psycopg2
+from psycopg2 import sql
+from psycopg2.extras import Json
+import hashlib
+from datetime import datetime
 
 SETORES = ["RH", "Financeiro", "Operações", "Marketing", "Comercial", "TI", "Logística", "Produção"]
 TIPOS_GRAFICOS = ["Linha", "Barra", "Pizza", "Área", "Dispersão"]
+
+
 
 DATA_DIR = "data"
 INDICATORS_FILE = os.path.join(DATA_DIR, "indicators.json")
@@ -29,6 +36,151 @@ BACKUP_LOG_FILE = os.path.join(DATA_DIR, "backup_log.json")
 INDICATOR_LOG_FILE = os.path.join(DATA_DIR, "indicator_log.json")
 USER_LOG_FILE = os.path.join(DATA_DIR, "user_log.json")
 KEY_FILE = "secret.key"
+
+def get_db_connection():
+    """
+    Estabelece e retorna uma conexão com o banco de dados PostgreSQL.
+    """
+    try:
+        conn = psycopg2.connect(
+            host="localhost",
+            database="scpc_indicadores",
+            user="streamlit",
+            password="6105/*"
+        )
+        return conn
+    except psycopg2.Error as e:
+        print(f"Erro ao conectar ao banco de dados: {e}")
+        # Em uma aplicação Streamlit, você pode querer usar st.error aqui
+        # st.error(f"Erro ao conectar ao banco de dados: {e}")
+        return None
+
+def create_tables_if_not_exists():
+    """
+    Cria as tabelas necessárias no banco de dados PostgreSQL se elas não existirem.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+
+            # 1. Tabela: usuarios
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    username TEXT PRIMARY KEY,
+                    password_hash TEXT NOT NULL,
+                    tipo TEXT NOT NULL,
+                    setor TEXT NOT NULL,
+                    nome_completo TEXT,
+                    email TEXT,
+                    data_criacao TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            # Inserir usuário admin padrão se a tabela estiver vazia
+            cur.execute("SELECT COUNT(*) FROM usuarios;")
+            if cur.fetchone()[0] == 0:
+                admin_password_hash = hashlib.sha256("6105/*".encode()).hexdigest()
+                cur.execute("""
+                    INSERT INTO usuarios (username, password_hash, tipo, setor, nome_completo, email)
+                    VALUES (%s, %s, %s, %s, %s, %s);
+                """, ("admin", admin_password_hash, "Administrador", "Todos", "Administrador Padrão", "admin@example.com"))
+                print("Usuário 'admin' padrão inserido.")
+
+            # 2. Tabela: indicadores
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS indicadores (
+                    id TEXT PRIMARY KEY,
+                    nome TEXT NOT NULL UNIQUE,
+                    objetivo TEXT,
+                    formula TEXT,
+                    variaveis JSONB,
+                    unidade TEXT,
+                    meta NUMERIC(10, 2),
+                    comparacao TEXT,
+                    tipo_grafico TEXT,
+                    responsavel TEXT,
+                    data_criacao TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    data_atualizacao TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            # 3. Tabela: resultados
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS resultados (
+                    indicator_id TEXT NOT NULL,
+                    data_referencia TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+                    resultado NUMERIC(10, 2),
+                    valores_variaveis JSONB,
+                    observacao TEXT,
+                    analise_critica JSONB,
+                    data_criacao TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    data_atualizacao TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    usuario TEXT,
+                    status_analise TEXT,
+                    PRIMARY KEY (indicator_id, data_referencia),
+                    FOREIGN KEY (indicator_id) REFERENCES indicadores(id) ON DELETE CASCADE
+                );
+            """)
+
+            # 4. Tabela: configuracoes
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS configuracoes (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
+            """)
+            # Inserir configurações padrão se a tabela estiver vazia
+            cur.execute("SELECT COUNT(*) FROM configuracoes;")
+            if cur.fetchone()[0] == 0:
+                cur.execute("INSERT INTO configuracoes (key, value) VALUES (%s, %s);", ("theme", "padrao"))
+                cur.execute("INSERT INTO configuracoes (key, value) VALUES (%s, %s);", ("backup_hour", "00:00"))
+                cur.execute("INSERT INTO configuracoes (key, value) VALUES (%s, %s);", ("last_backup_date", ""))
+                print("Configurações padrão inseridas.")
+
+            # 5. Tabela: log_backup
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS log_backup (
+                    id SERIAL PRIMARY KEY,
+                    timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    action TEXT,
+                    file_name TEXT,
+                    user_performed TEXT
+                );
+            """)
+
+            # 6. Tabela: log_indicadores
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS log_indicadores (
+                    id SERIAL PRIMARY KEY,
+                    timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    action TEXT,
+                    indicator_id TEXT,
+                    user_performed TEXT
+                );
+            """)
+
+            # 7. Tabela: log_usuarios
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS log_usuarios (
+                    id SERIAL PRIMARY KEY,
+                    timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    action TEXT,
+                    username_affected TEXT,
+                    user_performed TEXT
+                );
+            """)
+
+            conn.commit()
+            print("Tabelas verificadas/criadas com sucesso no PostgreSQL.")
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao criar tabelas: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False
 
 # Funções para converter a imagem para Base64 (DEFINIÇÃO GLOBAL)
 def img_to_bytes(img_path):
