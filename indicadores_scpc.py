@@ -453,36 +453,102 @@ def restore_data(backup_file, INDICATORS_FILE, RESULTS_FILE, CONFIG_FILE, USERS_
     except Exception as e:
         st.error(f"Erro ao restaurar o backup: {e}")
         return False
-def load_backup_log(BACKUP_LOG_FILE):
-    """Carrega o log de backup do arquivo."""
-    try:
-        with open(BACKUP_LOG_FILE, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-    except json.JSONDecodeError:
-        st.warning("Erro ao decodificar o arquivo de log de backup. O arquivo pode estar corrompido.")
-        return []
+        
+def load_backup_log():
+    """
+    Carrega o log de backup do banco de dados PostgreSQL.
+    Retorna uma lista de dicionários de entradas de log.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT timestamp, action, file_name, user_performed FROM log_backup ORDER BY timestamp DESC;")
+            log_data = cur.fetchall()
+            
+            log_entries = []
+            for row in log_data:
+                timestamp, action, file_name, user_performed = row
+                log_entries.append({
+                    "timestamp": timestamp.isoformat() if timestamp else "",
+                    "action": action if action is not None else "",
+                    "file_name": file_name if file_name is not None else "",
+                    "user": user_performed if user_performed is not None else "System"
+                })
+            return log_entries
+        except psycopg2.Error as e:
+            print(f"Erro ao carregar log de backup do banco de dados: {e}")
+            # st.warning(f"Erro ao decodificar o log de backup. O arquivo pode estar corrompido ou o DB inacessível: {e}")
+            return []
+        finally:
+            cur.close()
+            conn.close()
+    return [] # Retorna lista vazia se a conexão falhar
 
-def save_backup_log(log_data, BACKUP_LOG_FILE):
-    """Salva o log de backup no arquivo."""
-    try:
-        with open(BACKUP_LOG_FILE, "w") as f:
-            json.dump(log_data, f, indent=4, default=str)
-    except Exception as e:
-        st.error(f"Erro ao salvar o log de backup: {e}")
+def save_backup_log(log_data): # log_data é uma lista de dicionários
+    """
+    Salva o log de backup no banco de dados PostgreSQL.
+    Esta função limpa o log existente e reinseri as entradas fornecidas.
+    (ATENÇÃO: Para logs, é mais comum apenas adicionar novas entradas via log_backup_action).
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            # Limpar o log existente antes de reinserir
+            cur.execute("DELETE FROM log_backup;")
+            
+            for entry in log_data:
+                timestamp_dt = datetime.fromisoformat(entry.get("timestamp")) if entry.get("timestamp") else datetime.now()
+                action = entry.get("action")
+                file_name = entry.get("file_name")
+                user_performed = entry.get("user", "System") # Compatibilidade com 'user' ou 'user_performed'
+                
+                cur.execute("""
+                    INSERT INTO log_backup (timestamp, action, file_name, user_performed)
+                    VALUES (%s, %s, %s, %s);
+                """, (timestamp_dt, action, file_name, user_performed))
+            
+            conn.commit()
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao salvar o log de backup no banco de dados: {e}")
+            # st.error(f"Erro ao salvar o log de backup: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False
 
-def log_backup_action(action, file_name, BACKUP_LOG_FILE):
-    """Registra uma ação de backup no log."""
-    log = load_backup_log(BACKUP_LOG_FILE)
-    log_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "action": action,
-        "file_name": file_name,
-        "user": st.session_state.get("username", "System")
-    }
-    log.append(log_entry)
-    save_backup_log(log, BACKUP_LOG_FILE)
+def log_backup_action(action, file_name, user_performed): # Removido BACKUP_LOG_FILE
+    """
+    Registra uma ação de backup no log do banco de dados.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            
+            log_entry_user = user_performed # st.session_state.get("username", "System")
+            
+            cur.execute("""
+                INSERT INTO log_backup (action, file_name, user_performed)
+                VALUES (%s, %s, %s);
+            """, (action, file_name, log_entry_user))
+            
+            conn.commit()
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao registrar ação de backup no banco de dados: {e}")
+            # st.error(f"Erro ao registrar ação de backup: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False
+
 
 def load_indicators():
     """
