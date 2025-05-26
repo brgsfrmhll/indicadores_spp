@@ -2173,6 +2173,9 @@ def show_overview():
 
 def show_settings():
     """Mostra a página de configurações."""
+    # Declare a variável global no início da função, antes de qualquer uso
+    global KEY_FILE
+    
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
     st.header("Configurações")
 
@@ -2204,7 +2207,7 @@ def show_settings():
     # Botão para criar backup manual (fora do expander)
     if st.button("⟳ Criar novo backup manual", help="Cria um backup manual de todos os dados do sistema."):
         with st.spinner("Criando backup manual..."):
-            global KEY_FILE
+            # Não precisa declarar global aqui, já foi declarado no início da função
             generate_key(KEY_FILE)
             cipher = initialize_cipher(KEY_FILE)
             backup_file = backup_data(cipher, tipo_backup="user")
@@ -2221,7 +2224,7 @@ def show_settings():
         selected_backup = st.selectbox("Selecione o backup para restaurar", backup_files)
         if st.button("⚙️ Restaurar arquivo de backup ️", help="Restaura os dados do sistema a partir de um arquivo de backup."):
             with st.spinner("Criando backup de segurança..."):
-                global KEY_FILE
+                # Não precisa declarar global aqui, já foi declarado no início da função
                 generate_key(KEY_FILE)
                 cipher = initialize_cipher(KEY_FILE)
                 backup_file_antes_restauracao = backup_data(cipher, tipo_backup="seguranca")
