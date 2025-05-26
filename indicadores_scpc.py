@@ -777,16 +777,36 @@ def delete_user(username, USERS_FILE, USER_LOG_FILE):
         return True
     return False
 
-def load_user_log(USER_LOG_FILE):
-    """Carrega o log de usuários do arquivo."""
-    try:
-        with open(USER_LOG_FILE, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-    except json.JSONDecodeError:
-        st.warning("Erro ao decodificar o arquivo de log de usuários. O arquivo pode estar corrompido.")
-        return []
+def load_user_log():
+    """
+    Carrega o log de usuários do banco de dados PostgreSQL.
+    Retorna uma lista de dicionários de entradas de log.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT timestamp, action, username_affected, user_performed FROM log_usuarios ORDER BY timestamp DESC;")
+            log_data = cur.fetchall()
+            
+            log_entries = []
+            for row in log_data:
+                timestamp, action, username_affected, user_performed = row
+                log_entries.append({
+                    "timestamp": timestamp.isoformat() if timestamp else "",
+                    "action": action if action is not None else "",
+                    "username": username_affected if username_affected is not None else "", # Compatibilidade com 'username'
+                    "user": user_performed if user_performed is not None else "System"
+                })
+            return log_entries
+        except psycopg2.Error as e:
+            print(f"Erro ao carregar log de usuários do banco de dados: {e}")
+            # st.warning(f"Erro ao decodificar o log de usuários. O arquivo pode estar corrompido ou o DB inacessível: {e}")
+            return []
+        finally:
+            cur.close()
+            conn.close()
+    return [] # Retorna lista vazia se a conexão falhar
 
 def save_users(users_data):
     """
