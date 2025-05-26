@@ -2015,16 +2015,40 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                             tendencia_color = "#26A69A" if (tendencia == "crescente" and ind["comparacao"] == "Maior é melhor") or (tendencia == "decrescente" and ind["comparacao"] == "Menor é melhor") else "#FF5252" if (tendencia == "decrescente" and ind["comparacao"] == "Maior é melhor") or (tendencia == "crescente" and ind["comparacao"] == "Menor é melhor") else "#FFC107"
                             st.markdown(f"""<div style="margin-top:15px;"><h4>Análise de Tendência</h4><p>Este indicador apresenta uma tendência <span style="color:{tendencia_color}; font-weight:bold;">{tendencia}</span> nos últimos 3 períodos.</p></div>""", unsafe_allow_html=True)
                             st.markdown("<h4>Análise Automática</h4>", unsafe_allow_html=True)
-                            meta_float = float(ind.get("meta", 0.0)); last_result_float = float(data["last_result"]) if isinstance(data["last_result"], (int, float)) else None
+                            meta_float = float(ind.get("meta", 0.0))
+                            last_result_float = float(data["last_result"]) if isinstance(data["last_result"], (int, float)) else None
                             if last_result_float is not None:
-                                if tendencia == "crescente" and ind["comparacao"] == "Maior é melhor": st.success("O indicador apresenta evolução positiva, com resultados crescentes nos últimos períodos."); if last_result_float >= meta_float: st.success("O resultado atual está acima da meta estabelecida, demonstrando bom desempenho."); else: st.warning("Apesar da evolução positiva, o resultado ainda está abaixo da meta estabelecida.")
-                                elif tendencia == "decrescente" and ind["comparacao"] == "Maior é melhor": st.error("O indicador apresenta tendência de queda, o que é preocupante para este tipo de métrica."); if last_result_float >= meta_float: st.warning("Embora o resultado atual ainda esteja acima da meta, a tendência de queda requer atenção."); else: st.error("O resultado está abaixo da meta e com tendência de queda, exigindo ações corretivas urgentes.")
-                                elif tendencia == "crescente" and ind["comparacao"] == "Menor é melhor": st.error("O indicador apresenta tendência de aumento, o que é negativo para este tipo de métrica."); if last_result_float <= meta_float: st.warning("Embora o resultado atual ainda esteja dentro da meta, a tendência de aumento requer atenção."); else: st.error("O resultado está acima da meta e com tendência de aumento, exigindo ações corretivas urgentes.")
-                                elif tendencia == "decrescente" and ind["comparacao"] == "Menor é melhor": st.success("O indicador apresenta evolução positiva, com resultados decrescentes nos últimos períodos."); if last_result_float <= meta_float: st.success("O resultado atual está dentro da meta estabelecida, demonstrando bom desempenho."); else: st.warning("Apesar da evolução positiva, o resultado ainda está acima da meta estabelecida.")
+                                if tendencia == "crescente" and ind["comparacao"] == "Maior é melhor":
+                                    st.success("O indicador apresenta evolução positiva, com resultados crescentes nos últimos períodos.")
+                                    if last_result_float >= meta_float:
+                                        st.success("O resultado atual está acima da meta estabelecida, demonstrando bom desempenho.")
+                                    else:
+                                        st.warning("Apesar da evolução positiva, o resultado ainda está abaixo da meta estabelecida.")
+                                elif tendencia == "decrescente" and ind["comparacao"] == "Maior é melhor":
+                                    st.error("O indicador apresenta tendência de queda, o que é preocupante para este tipo de métrica.")
+                                    if last_result_float >= meta_float:
+                                        st.warning("Embora o resultado atual ainda esteja acima da meta, a tendência de queda requer atenção.")
+                                    else:
+                                        st.error("O resultado está abaixo da meta e com tendência de queda, exigindo ações corretivas urgentes.")
+                                elif tendencia == "crescente" and ind["comparacao"] == "Menor é melhor":
+                                    st.error("O indicador apresenta tendência de aumento, o que é negativo para este tipo de métrica.")
+                                    if last_result_float <= meta_float:
+                                        st.warning("Embora o resultado atual ainda esteja dentro da meta, a tendência de aumento requer atenção.")
+                                    else:
+                                        st.error("O resultado está acima da meta e com tendência de aumento, exigindo ações corretivas urgentes.")
+                                elif tendencia == "decrescente" and ind["comparacao"] == "Menor é melhor":
+                                    st.success("O indicador apresenta evolução positiva, com resultados decrescentes nos últimos períodos.")
+                                    if last_result_float <= meta_float:
+                                        st.success("O resultado atual está dentro da meta estabelecida, demonstrando bom desempenho.")
+                                    else:
+                                        st.warning("Apesar da evolução positiva, o resultado ainda está acima da meta estabelecida.")
                                 else:
-                                    if (last_result_float >= meta_float and ind["comparacao"] == "Maior é melhor") or (last_result_float <= meta_float and ind["comparacao"] == "Menor é melhor"): st.info("O indicador apresenta estabilidade e está dentro da meta estabelecida.")
-                                    else: st.warning("O indicador apresenta estabilidade, porém está fora da meta estabelecida.")
-                            else: st.info("Não foi possível realizar a análise automática devido a dados de resultado inválidos.")
+                                    if (last_result_float >= meta_float and ind["comparacao"] == "Maior é melhor") or (last_result_float <= meta_float and ind["comparacao"] == "Menor é melhor"):
+                                        st.info("O indicador apresenta estabilidade e está dentro da meta estabelecida.")
+                                    else:
+                                        st.warning("O indicador apresenta estabilidade, porém está fora da meta estabelecida.")
+                            else:
+                                st.info("Não foi possível realizar a análise automática devido a dados de resultado inválidos.")
                         else: st.info("Não há dados suficientes para análise de tendência (mínimo de 3 períodos necessários).")
                     else: st.info("Não há dados históricos suficientes para análise de tendência.")
 
