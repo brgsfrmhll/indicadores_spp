@@ -184,6 +184,38 @@ def create_tables_if_not_exists():
             cur.close()
             conn.close()
     return False
+def load_users():
+    """
+    Carrega todos os usuários do banco de dados PostgreSQL.
+    Retorna um dicionário com username como chave e os dados como valor.
+    """
+    conn = get_db_connection()
+    users = {}
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT username, password_hash, tipo, setor, nome_completo, email
+                FROM usuarios;
+            """)
+            rows = cur.fetchall()
+            for row in rows:
+                username, password_hash, tipo, setor, nome_completo, email = row
+                users[username] = {
+                    "password": password_hash,
+                    "tipo": tipo,
+                    "setor": setor,
+                    "nome_completo": nome_completo,
+                    "email": email
+                }
+            return users
+        except psycopg2.Error as e:
+            print(f"Erro ao carregar usuários: {e}")
+            return {}
+        finally:
+            cur.close()
+            conn.close()
+    return {}
 
 def save_users(users_data):
     """
