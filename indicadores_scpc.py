@@ -2207,9 +2207,24 @@ def show_settings():
     config = load_config()
 
     st.subheader("Informações do Sistema")
+    
+    # Criando duas colunas com larguras iguais
     col1, col2 = st.columns(2)
-    with col1: st.markdown("""**Versão do Portal:** 1.2.0\n**Data da Última Atualização:** 22/04/2025\n**Desenvolvido por:** Equipe de Desenvolvimento""")
-    with col2: st.markdown("""**Suporte Técnico:**\nEmail: suporte@portalindicadores.com\nTelefone: (11) 1234-5678""")
+    
+    # Coluna 1: Informações do sistema
+    with col1:
+        st.markdown("##### Detalhes do Portal")
+        st.markdown("**Versão do Portal:** 1.3.1")
+        st.markdown("**Data da Última Atualização:** 26/04/2025")
+        st.markdown("**Desenvolvido por:** Equipe de Desenvolvimento")
+
+    # Coluna 2: Informações de contato
+    with col2:
+        st.markdown("##### Contato")
+        st.markdown("**Suporte Técnico:**")
+        st.markdown("Email: suporte@portalindicadores.com")
+        st.markdown("Telefone: (11) 1234-5678")
+   
 
     st.subheader("Backup Automático")
     if "backup_hour" not in config: config["backup_hour"] = "00:00"
@@ -2225,9 +2240,6 @@ def show_settings():
     if "last_backup_date" in config: st.markdown(f"**Último backup automático:** {config['last_backup_date']}")
     else: st.markdown("**Último backup automático:** Nunca executado")
 
-    st.warning("As funcionalidades de backup e restauração precisam ser adaptadas para o banco de dados PostgreSQL.")
-    st.info("Para backup do banco de dados, a ferramenta `pg_dump` é a mais recomendada.")
-    st.info("Para restaurar, `pg_restore` ou `psql` podem ser usados.")
 
     # Botão para criar backup manual (fora do expander)
     if st.button("⟳ Criar novo backup manual", help="Cria um backup manual de todos os dados do sistema."):
@@ -2728,7 +2740,7 @@ def main():
 
     st.sidebar.markdown("""
     <div class="sidebar-footer">
-        <p style="margin:0;">Portal de Indicadores v1.2</p>
+        <p style="margin:0;">Portal de Indicadores v1.3.1</p>
         <p style="margin:3px 0 0 0;">© 2025 Todos os direitos reservados</p>
     </div>
     """, unsafe_allow_html=True)
