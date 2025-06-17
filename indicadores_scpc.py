@@ -976,7 +976,7 @@ def configure_page():
     if logo_base64:
         page_icon_value = f"data:image/png;base64,{logo_base64}"
     st.set_page_config(
-        page_title="[DEMO]Portal de Indicadores",
+        page_title="Portal de Indicadores - Santa Casa Poços de Caldas",
         page_icon=page_icon_value,
         layout="wide"
     )
