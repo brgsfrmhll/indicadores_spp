@@ -2281,16 +2281,16 @@ def show_settings():
     # Coluna 1: Informações do sistema
     with col1:
         st.markdown("##### Detalhes do Portal")
-        st.markdown("**Versão do Portal:** 1.3.1")
-        st.markdown("**Data da Última Atualização:** 26/04/2025")
-        st.markdown("**Desenvolvido por:** Equipe de Desenvolvimento")
+        st.markdown("**Versão do Portal:** 1.4.0")
+        st.markdown("**Data da Última Atualização:** 17/06/2025")
+        st.markdown("**Desenvolvido por:** FIA Softworks")
 
     # Coluna 2: Informações de contato
     with col2:
         st.markdown("##### Contato")
         st.markdown("**Suporte Técnico:**")
-        st.markdown("Email: suporte@portalindicadores.com")
-        st.markdown("Telefone: (11) 1234-5678")
+        st.markdown("Email: beborges@outlook.com.br")
+        st.markdown("Telefone: (35) 93300-1414")
    
 
     st.subheader("Backup Automático")
