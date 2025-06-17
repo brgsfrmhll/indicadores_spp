@@ -838,7 +838,7 @@ def log_user_action(action, username_affected, user_performed):
 
 # --- Funções Auxiliares e de UI (Adaptadas para o DB) ---
 
-SETORES = ["RH", "Financeiro", "Operações", "Marketing", "Comercial", "TI", "Logística", "Produção"]
+SETORES = ["RH", "Financeiro", "Operações", "Marketing", "Comercial", "TI", "Logística", "Produção", "UTI - Neonatal"]
 TIPOS_GRAFICOS = ["Linha", "Barra", "Pizza", "Área", "Dispersão"]
 
 TEMA_PADRAO = {
