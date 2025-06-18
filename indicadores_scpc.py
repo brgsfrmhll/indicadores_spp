@@ -1148,17 +1148,11 @@ def get_user_type(username):
     return "Visualizador"
 
 def get_user_sector(username):
-    """Obtém os setores do usuário como lista."""
+    """Obtém o setor do usuário."""
     users = load_users()
     if username in users:
-        setor_raw = users[username].get("setor", ["Todos"])
-        if isinstance(setor_raw, str):
-            return [setor_raw]
-        return setor_raw
-    return ["Todos"]setor_raw]
-        return setor_raw
-    return ["Todos"]sers[username].get("setor", "Todos")
-    return "Todos"
+        return users[username].get("setor", "Todos")
+    return "Todos" 
 
 def create_indicator(SETORES, TIPOS_GRAFICOS):
     """Mostra a página de criação de indicador."""
