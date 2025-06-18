@@ -3277,7 +3277,7 @@ def show_user_management(SETORES):
                         <p style="margin:5px 0 0 0; color:#546E7A;">Login: <strong>{login}</strong></p>
                         <p style="margin:3px 0 0 0; color:#546E7A;">Email: {email}</p>
                         <p style="margin:3px 0 0 0; color:#546E7A;">Criado em: {row['Criado em']}</p>
-                         <p style="margin:3px 0 0 0; color:#546E7A;">Setores: {sectors_display}</p> {/* Exibe os setores associados */}
+                         <p style="margin:3px 0 0 0; color:#546E7A;">Setores: {sectors_display}</p> 
                     </div>
                     <div>
                         <span style="background-color:{type_color}; color:white; padding:5px 10px; border-radius:15px; font-size:12px;">{user_type}</span>
