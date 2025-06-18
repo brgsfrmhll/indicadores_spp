@@ -300,7 +300,7 @@ def save_users(users_data):
             # Deletar usuários que existem no DB mas não na lista de salvamento
             users_to_delete = existing_users_in_db - current_users_to_save
             for username_to_delete in users_to_delete:
-                 # O ON DELETE CASCADE na chave estrangeira de usuario_setores garantirá que as entradas de setor sejam deletadas primeiro
+                # O ON DELETE CASCADE na chave estrangeira de usuario_setores garantirá que as entradas de setor sejam deletadas primeiro
                 cur.execute("DELETE FROM usuarios WHERE username = %s;", (username_to_delete,))
                 print(f"Usuário '{username_to_delete}' removido do banco de dados.")
 
@@ -1125,7 +1125,7 @@ def show_login_page():
     #MainMenu { visibility: hidden !important; }
     header { display: none !important; }
     .stTextInput > div > div > input { border-radius: 6px; border: 1px solid #E0E0E0; padding: 10px 15px; font-size: 15px; }
-div[data-testid="stForm"] button[type="submit"] { background-color: #1E88E5; color: white; border: none; border-radius: 6px; padding: 10px 15px; font-size: 16px; font-weight: 500; width: 100%; }
+    div[data-testid="stForm"] button[type="submit"] { background-color: #1E88E5; color: white; border: none; border-radius: 6px; padding: 10px 15px; font-size: 16px; font-weight: 500; width: 100%; }
     .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 600px; }
     .stAlert { border-radius: 6px; }
     .stApp { background-color: #f8f9fa; }
@@ -1541,7 +1541,6 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
             objetivo = st.text_area("Objetivo", value=selected_indicator["objetivo"])
             unidade = st.text_input("Unidade do Resultado", value=selected_indicator.get("unidade", ""), placeholder="Ex: %", key=f"edit_unidade_input_{selected_indicator['id']}")
             formula = st.text_input("Fórmula de Cálculo (Use letras para variáveis, ex: A+B/C)", value=selected_indicator.get("formula", ""), placeholder="Ex: (DEMISSOES / TOTAL_FUNCIONARIOS) * 100", key=f"edit_formula_input_{selected_indicator['id']}")
-
             # Verifica se as variáveis na fórmula mudaram e atualiza o estado da sessão
             current_detected_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', formula))))
             if st.session_state.current_formula_vars != current_detected_vars:
@@ -1935,7 +1934,6 @@ def fill_indicator(SETORES, TEMA_PADRAO):
 
                         # Chave para armazenar o resultado calculado no estado da sessão
                         calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
-
                         # Exibe o resultado calculado se ele existir no estado da sessão
                         if st.session_state.get(calculated_result_state_key) is not None:
                             calculated_result = st.session_state[calculated_result_state_key]
@@ -2295,7 +2293,6 @@ def fill_indicator(SETORES, TEMA_PADRAO):
         log_results = [r for r in all_results_log if r.get("indicator_id") == selected_indicator["id"]]
         # Ordena os logs pela data de atualização
         log_results = sorted(log_results, key=lambda x: x.get("data_atualizacao", x.get("data_criacao", "")), reverse=True) # Usa data_criacao como fallback
-
         with st.expander("📜 Log de Preenchimentos (clique para visualizar)", expanded=False):
             if log_results:
                 log_data_list = []
@@ -2981,6 +2978,7 @@ def show_settings():
         # para refletir a nova hora. A implementação atual não faz isso dinamicamente.
         # Seria necessário parar o thread antigo e iniciar um novo com a nova hora.
 
+
     # Exibe a data do último backup automático
     if "last_backup_date" in config and config["last_backup_date"]: # Verifica se a chave existe e não está vazia
         st.markdown(f"**Último backup automático:** {config['last_backup_date']}")
@@ -3055,7 +3053,6 @@ def show_settings():
         st.subheader("Administração do Sistema")
         with st.expander("Opções Avançadas de Limpeza"):
             st.warning("⚠️ Estas opções podem causar perda de dados permanente. Use com extremo cuidado.")
-
             # Botão para limpar resultados (requer confirmação)
             if st.button("🗑️ Limpar TODOS os resultados", help="Exclui todos os resultados de todos os indicadores no sistema."):
                 # Usa o estado da sessão para gerenciar a confirmação
@@ -3090,7 +3087,7 @@ def show_settings():
                                  finally:
                                      cur.close()
                                      conn.close()
-                          # Reseta o estado de confirmação
+                         # Reseta o estado de confirmação
                          st.session_state.confirm_limpar_resultados = False
                          if "confirm_limpar_resultados_btn" in st.session_state: del st.session_state.confirm_limpar_resultados_btn
                          if "cancel_limpar_resultados_btn" in st.session_state: del st.session_state.cancel_limpar_resultados_btn
@@ -3132,7 +3129,7 @@ def show_settings():
                                  finally:
                                      cur.close()
                                      conn.close()
-                          # Reseta o estado de confirmação
+                         # Reseta o estado de confirmação
                          st.session_state.confirm_limpar_tudo = False
                          if "confirm_limpar_tudo_btn" in st.session_state: del st.session_state.confirm_limpar_tudo_btn
                          if "cancel_limpar_tudo_btn" in st.session_state: del st.session_state.cancel_limpar_tudo_btn
@@ -3627,7 +3624,7 @@ def backup_data(cipher, tipo_backup="user"):
     try:
         with open(BACKUP_FILE, "wb") as backup_file:
             backup_file.write(encrypted_data) # Escreve os dados criptografados no arquivo
-        # Log da ação de backup (usa st.session_state.username, que só existe na sessão Streamlit)
+        # Log da ação de backup (usando st.session_state.username, que só existe na sessão Streamlit)
         # Esta logagem pode falhar se o backup for agendado em um thread sem contexto de sessão.
         # Considerar passar o username como argumento para a função agendada ou usar um placeholder.
         user_performing_backup = getattr(st.session_state, 'username', 'Sistema Agendado') # Pega username se disponível, senão usa 'Sistema Agendado'
@@ -3740,7 +3737,6 @@ def restore_data(backup_file_path, cipher):
                  # Converte data_referencia de string para datetime
                  try: data_referencia_dt = datetime.fromisoformat(r.get("data_referencia"))
                  except (ValueError, TypeError): data_referencia_dt = None # Ignora se data inválida
-
                  if data_referencia_dt: # Só adiciona se a data for válida
                      # Ajusta para lidar com valores None nas datas de criação/atualização e usuário/status
                      data_criacao_dt = datetime.fromisoformat(r.get("data_criacao")) if r.get("data_criacao") else None
@@ -4040,6 +4036,7 @@ def main():
         <p style="margin:0; font-size:10px;">Desenvolvido por FIA Softworks</p>
     </div>
     """, unsafe_allow_html=True)
+
 
     # --- Conteúdo Principal (Renderiza a página selecionada) ---
     # Cada função de página agora verifica as permissões internamente, mas a sidebar já restringe.
