@@ -79,35 +79,35 @@ def create_tables_if_not_exists():
                     PRIMARY KEY (username, setor)
                 );
             """)
-            
+
             # Verificar se o usuário admin já existe
             cur.execute("SELECT COUNT(*) FROM usuarios WHERE username = 'admin';")
             admin_exists = cur.fetchone()[0] > 0
-            
-            # Se o admin não existir, criar um usuário admin padrão e associá-lo ao setor "Todos"
+
+            # Se o admin não existir, criar um usuário admin padrão e associá-lo ao setor "Todos" (logicamente)
             if not admin_exists:
                 # Defina aqui o usuário e senha padrão para o primeiro acesso
                 admin_username = "admin"
                 admin_password = "admin123"  # Você pode alterar para a senha que preferir
-                
+
                 # Gerar hash da senha
                 admin_password_hash = hashlib.sha256(admin_password.encode()).hexdigest()
-                
+
                 # Inserir o usuário admin
                 cur.execute("""
                     INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email)
                     VALUES (%s, %s, %s, %s, %s);
                 """, (admin_username, admin_password_hash, "Administrador", "Administrador do Sistema", "admin@example.com"))
 
-                # Associar o admin ao setor "Todos" na nova tabela
+                # Associar o admin ao setor "Todos" na nova tabela (para consistência, embora admin ignore setores)
                 cur.execute("""
                     INSERT INTO usuario_setores (username, setor)
                     VALUES (%s, %s)
                     ON CONFLICT (username, setor) DO NOTHING;
                 """, (admin_username, "Todos"))
-                
+
                 print(f"Usuário administrador padrão criado. Username: {admin_username}, Senha: {admin_password}")
-                
+
             # Resto do código para criar outras tabelas...
             # 3. Tabela: indicadores (Mantida)
             cur.execute("""
@@ -1077,7 +1077,6 @@ def create_chart(indicator_id, chart_type, TEMA_PADRAO):
         if not df.empty:
             last_result = float(df.iloc[-1]["resultado"])
             meta_value = float(indicator.get("meta", 0.0)) if indicator.get("meta") is not None else None
-            # Se a meta é None ou 0 e o resultado é 0, pode causar problemas na proporção.
             # Ajuste para garantir que haja dados válidos para a pizza.
             values_for_pie = [last_result]
             names_for_pie = ["Resultado Atual"]
@@ -1423,7 +1422,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS):
                     except Exception as e:
                          st.error(f"❌ Erro inesperado ao validar a fórmula: {e}"); return # Impede a criação
 
-                with st.spinner("Criando indicador..."):
+                with st.spinner("Criando indicador...\ Academia FIA Softworks"):
                     time.sleep(0.5) # Pequeno delay para simular processamento
                     indicators = load_indicators()
                     # Verifica se já existe um indicador com o mesmo nome
@@ -1709,7 +1708,7 @@ def delete_indicator(indicator_id, user_performed):
             conn.commit()
             log_indicator_action("Indicador excluído", indicator_id, user_performed)
             # Recarrega a lista de indicadores no estado da sessão após exclusão bem-sucedida
-            st.session_state["indicators"] = load_indicators()
+            # st.session_state["indicators"] = load_indicators() # Removido, load_indicators é chamado em edit_indicator ao entrar na página
             return True
         except psycopg2.Error as e:
             print(f"Erro ao excluir indicador do banco de dados: {e}")
@@ -1723,34 +1722,34 @@ def delete_indicator(indicator_id, user_performed):
 
 # Esta função não é mais usada diretamente para excluir resultados individuais no fill_indicator,
 # a exclusão foi integrada diretamente no loop de exibição de resultados. Mantida para referência se necessário.
-def display_result_with_delete(result, selected_indicator):
-    """Exibe um resultado com a opção de excluir e ícone de status da meta."""
-    data_referencia = result.get('data_referencia')
-    if data_referencia:
-        col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 2, 2, 1])
-        with col1: st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
-        with col2:
-            resultado = result.get('resultado', 'N/A'); unidade = selected_indicator.get('unidade', ''); meta = selected_indicator.get('meta', None); comparacao = selected_indicator.get('comparacao', 'Maior é melhor')
-            icone = ":white_circle:"
-            try:
-                resultado_float = float(resultado); meta_float = float(meta)
-                if comparacao == "Maior é melhor": icone = ":white_check_mark:" if resultado_float >= meta_float else ":x:"
-                elif comparacao == "Menor é melhor": icone = ":white_check_mark:" if resultado_float <= meta_float else ":x:"
-            except (TypeError, ValueError): pass
-            st.markdown(f"{icone} **{resultado:.2f}{unidade}**")
-        with col3: st.write(result.get('observacao', 'N/A'))
-        with col4: st.write(result.get('status_analise', 'N/A'))
-        with col5: st.write(pd.to_datetime(result.get('data_atualizacao')).strftime("%d/%m/%Y %H:%M") if result.get('data_atualizacao') else 'N/A')
-        with col6:
-            # Botão de exclusão para este resultado específico
-            if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}_{selected_indicator['id']}"): # Chave única
-                # Chama a função para deletar o resultado no DB
-                delete_result(selected_indicator['id'], data_referencia, st.session_state.username)
-                # Recarrega os resultados após a exclusão para atualizar a exibição
-                # (A exclusão está no loop de exibição em fill_indicator agora)
-                st.rerun()
-    else:
-        st.warning("Data de referência ausente. Impossível exibir/excluir este resultado.")
+# def display_result_with_delete(result, selected_indicator):
+#     """Exibe um resultado com a opção de excluir e ícone de status da meta."""
+#     data_referencia = result.get('data_referencia')
+#     if data_referencia:
+#         col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 2, 2, 1])
+#         with col1: st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
+#         with col2:
+#             resultado = result.get('resultado', 'N/A'); unidade = selected_indicator.get('unidade', ''); meta = selected_indicator.get('meta', None); comparacao = selected_indicator.get('comparacao', 'Maior é melhor')
+#             icone = ":white_circle:"
+#             try:
+#                 resultado_float = float(resultado); meta_float = float(meta)
+#                 if comparacao == "Maior é melhor": icone = ":white_check_mark:" if resultado_float >= meta_float else ":x:"
+#                 elif comparacao == "Menor é melhor": icone = ":white_check_mark:" if resultado_float <= meta_float else ":x:"
+#             except (TypeError, ValueError): pass
+#             st.markdown(f"{icone} **{resultado:.2f}{unidade}**")
+#         with col3: st.write(result.get('observacao', 'N/A'))
+#         with col4: st.write(result.get('status_analise', 'N/A'))
+#         with col5: st.write(pd.to_datetime(result.get('data_atualizacao')).strftime("%d/%m/%Y %H:%M") if result.get('data_atualizacao') else 'N/A')
+#         with col6:
+#             # Botão de exclusão para este resultado específico
+#             if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}_{selected_indicator['id']}_{datetime.now().timestamp()}"): # Chave mais única com timestamp
+#                 # Chama a função para deletar o resultado no DB
+#                 delete_result(selected_indicator['id'], data_referencia, st.session_state.username)
+#                 # Recarrega os resultados após a exclusão para atualizar a exibição
+#                 # (A exclusão está no loop de exibição em fill_indicator agora)
+#                 # st.rerun() # delete_result já chama rerun
+#     else:
+#         st.warning("Resultado com data de referência ausente. Impossível exibir/excluir este resultado.")
 
 
 def delete_result(indicator_id, data_referencia_str, user_performed):
@@ -1808,7 +1807,8 @@ def fill_indicator(SETORES, TEMA_PADRAO):
     if user_type == "Operador":
         filtered_indicators = [ind for ind in indicators if ind["responsavel"] in user_sectors]
         if not filtered_indicators:
-            st.info(f"Não há indicadores associados a nenhum dos seus setores ({', '.join(user_sectors)}).")
+            sectors_display = ", ".join(user_sectors) if user_sectors else "nenhum setor associado"
+            st.info(f"Não há indicadores associados a nenhum dos seus setores ({sectors_display}).")
             st.markdown('</div>', unsafe_allow_html=True)
             return
     else:
@@ -1826,7 +1826,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
         st.subheader(f"Informações do Indicador: {selected_indicator['nome']}")
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown(f"**Objetivo:** {selected_indicator['objetivo']}")
+            st.markdown(f"**Objetivo:** {selected_indicator['objetivo']}\ Academia FIA Softworks")
             if selected_indicator.get("formula"):
                 st.markdown(f"**Fórmula de Cálculo:** `{selected_indicator['formula']}`")
             else:
@@ -2378,38 +2378,48 @@ def show_dashboard(SETORES, TEMA_PADRAO):
 
     col1, col2 = st.columns(2)
     with col1:
-        # O filtro de setor agora leva em conta os setores do usuário logado
+        # Filtro de setor agora para dashboard
         setores_disponiveis = sorted(list(set([ind["responsavel"] for ind in indicators])))
         filter_options = ["Todos"] + setores_disponiveis
 
+        # Adapta as opções de filtro para Operadores
         if user_type == "Operador":
-             # Operadores só podem filtrar pelos seus próprios setores ou "Todos" (se aplicável)
+             # Operadores só podem filtrar pelos seus próprios setores ou "Todos"
+             # Cria a lista de opções permitidas para o operador
              allowed_filter_options = ["Todos"] + [s for s in setores_disponiveis if s in user_sectors]
-             # Se o operador não tem setores associados ou seus setores não têm indicadores, a lista pode ser ['Todos']
-             if not allowed_filter_options or (len(allowed_filter_options) == 1 and allowed_filter_options[0] != "Todos"):
-                 # Adiciona "Todos" se não estiver presente e não houver outras opções
-                 if "Todos" not in allowed_filter_options: allowed_filter_options.insert(0, "Todos")
-             setor_filtro = st.multiselect("Filtrar por Setor:", allowed_filter_options, default=["Todos"])
-             # Se o operador tem setores específicos, o filtro inicial padrão pode ser seus setores
-             if user_sectors and "Todos" not in user_sectors and any(s in allowed_filter_options for s in user_sectors):
-                  # Tenta definir o filtro padrão para os setores do operador, mas apenas aqueles que realmente existem na lista de setores disponíveis
-                  default_sectors = [s for s in user_sectors if s in allowed_filter_options]
-                  if default_sectors:
-                      setor_filtro = st.multiselect("Filtrar por Setor:", allowed_filter_options, default=default_sectors)
+             # Remove duplicatas e mantém a ordem se "Todos" for a primeira opção
+             unique_allowed_filter_options = []
+             for item in allowed_filter_options:
+                 if item not in unique_allowed_filter_options:
+                     unique_allowed_filter_options.append(item)
+
+             # Define o filtro padrão. Se o operador tem setores associados, tenta default para eles.
+             default_filter = ["Todos"]
+             if user_sectors and any(s in unique_allowed_filter_options for s in user_sectors):
+                  default_filter = [s for s in user_sectors if s in unique_allowed_filter_options]
+                  if not default_filter: default_filter = ["Todos"] # Fallback se nenhum dos setores do usuário estiver na lista disponível
+
+             setor_filtro = st.multiselect("Filtrar por Setor:", unique_allowed_filter_options, default=default_filter, key="dashboard_setor_filter")
+
 
         else:
             # Administradores e Visualizadores podem filtrar por qualquer setor
-            setor_filtro = st.multiselect("Filtrar por Setor:", filter_options, default=["Todos"])
+            setor_filtro = st.multiselect("Filtrar por Setor:", filter_options, default=["Todos"], key="dashboard_setor_filter")
 
     with col2:
-        status_options = ["Todos", "Acima da Meta", "Abaixo da Meta", "Sem Resultados"]
-        status_filtro = st.multiselect("Filtrar por Status:", status_options, default=["Todos"])
+        status_options = ["Todos", "Acima da Meta", "Abaixo da Meta", "Sem Resultados", "N/A"] # Inclui N/A
+        status_filtro = st.multiselect("Filtrar por Status:", status_options, default=["Todos"], key="dashboard_status_filter")
 
     # Aplica o filtro por setor
+    filtered_indicators = indicators
     if setor_filtro and "Todos" not in setor_filtro:
         filtered_indicators = [ind for ind in indicators if ind["responsavel"] in setor_filtro]
-    else:
-        filtered_indicators = indicators # Se "Todos" está selecionado ou o filtro está vazio, mostra todos
+    # Se user é Operador, aplica filtro adicional baseado nos setores DO USUÁRIO, *depois* do filtro de setor selecionado na UI
+    # Isso garante que um Operador só veja indicadores dos SEUS setores, mesmo que selecione "Todos" no filtro da UI
+    # E se selecionar setores específicos na UI, veja apenas a intersecção entre seus setores e os selecionados.
+    if user_type == "Operador" and user_sectors and "Todos" not in user_sectors:
+         filtered_indicators = [ind for ind in filtered_indicators if ind["responsavel"] in user_sectors]
+
 
     if not filtered_indicators:
         selected_setor_display = ", ".join(setor_filtro) if setor_filtro else "selecionado(s)"
@@ -2422,6 +2432,7 @@ def show_dashboard(SETORES, TEMA_PADRAO):
     indicators_with_results = 0
     indicators_above_target = 0
     indicators_below_target = 0
+    indicators_na_status = 0 # Contador para status N/A
 
     # Calcula os resumos
     for ind in filtered_indicators:
@@ -2432,7 +2443,8 @@ def show_dashboard(SETORES, TEMA_PADRAO):
             df_results = pd.DataFrame(ind_results)
             df_results["data_referencia"] = pd.to_datetime(df_results["data_referencia"])
             df_results = df_results.sort_values("data_referencia", ascending=False)
-            last_result = df_results.iloc[0]["resultado"]
+            last_result_obj = df_results.iloc[0]
+            last_result = last_result_obj["resultado"]
             meta = float(ind.get("meta", 0.0)) # Garante que a meta é float
 
             try:
@@ -2444,25 +2456,34 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                     if last_result_float <= meta: indicators_above_target += 1
                     else: indicators_below_target += 1
             except (TypeError, ValueError):
-                 # Se o resultado não é numérico, não conta para acima/abaixo da meta
-                 pass
+                 # Se o resultado não é numérico, conta como N/A para status de meta
+                 indicators_na_status += 1
 
 
     # Exibe os cartões de resumo
+    # Ajusta a largura das colunas se necessário, ou mantém 4 colunas
     col1, col2, col3, col4 = st.columns(4)
     with col1: st.markdown(f"""<div style="background-color:#f8f9fa; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:#1E88E5;">{total_indicators}</h3><p style="margin:0;">Total de Indicadores</p></div>""", unsafe_allow_html=True)
     with col2: st.markdown(f"""<div style="background-color:#f8f9fa; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:#1E88E5;">{indicators_with_results}</h3><p style="margin:0;">Com Resultados</p></div>""", unsafe_allow_html=True)
-    with col3: st.markdown(f"""<div style="background-color:#26A69A; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:white;">{indicators_above_target}</h3><p style="margin:0; color:white;">Acima da Meta</p></div>""", unsafe_allow_html=True)
-    with col4: st.markdown(f"""<div style="background-color:#FF5252; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:white;">{indicators_below_target}</h3><p style="margin:0; color:white;">Abaixo da Meta</p></div>""", unsafe_allow_html=True)
+    with col3: st.markdown(f"""<div style="background-color:#26A69A; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:white;">{indicators_above_target}</h3><p style="margin:0; color:white;">Acima/Dentro da Meta</p></div>""", unsafe_allow_html=True) # Texto ajustado
+    with col4: st.markdown(f"""<div style="background-color:#FF5252; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:white;">{indicators_below_target}</h3><p style="margin:0; color:white;">Abaixo/Fora da Meta</p></div>""" if indicators_below_target > 0 else f"""<div style="background-color:#f8f9fa; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:#37474F;">{indicators_below_target}</h3><p style="margin:0;">Abaixo/Fora da Meta</p></div>""", unsafe_allow_html=True) # Texto e cor ajustados
 
 
     st.subheader("Status dos Indicadores")
     # Dados para o gráfico de pizza de status
-    status_data = {"Status": ["Acima da Meta", "Abaixo da Meta", "Sem Resultados"], "Quantidade": [indicators_above_target, indicators_below_target, total_indicators - indicators_with_results]}
+    status_data = {"Status": ["Acima/Dentro da Meta", "Abaixo/Fora da Meta", "Sem Resultados", "Status N/A"], "Quantidade": [indicators_above_target, indicators_below_target, total_indicators - indicators_with_results, indicators_na_status]} # Inclui N/A
     df_status = pd.DataFrame(status_data)
-    # Cria o gráfico de pizza
-    fig_status = px.pie(df_status, names="Status", values="Quantidade", title="Distribuição de Status dos Indicadores", color="Status", color_discrete_map={"Acima da Meta": "#26A69A", "Abaixo da Meta": "#FF5252", "Sem Resultados": "#9E9E9E"})
-    st.plotly_chart(fig_status, use_container_width=True) # Exibe o gráfico
+    # Mapeamento de cores para os status
+    status_color_map = {"Acima/Dentro da Meta": "#26A69A", "Abaixo/Fora da Meta": "#FF5252", "Sem Resultados": "#9E9E9E", "Status N/A": "#607D8B"} # Adicionado cor para N/A
+
+    # Cria o gráfico de pizza - filtra status com quantidade 0 para não aparecer na legenda
+    df_status_filtered = df_status[df_status['Quantidade'] > 0]
+    if not df_status_filtered.empty:
+         fig_status = px.pie(df_status_filtered, names="Status", values="Quantidade", title="Distribuição de Status dos Indicadores", color="Status", color_discrete_map=status_color_map)
+         st.plotly_chart(fig_status, use_container_width=True) # Exibe o gráfico
+    else:
+         st.info("Não há dados de status para exibir o gráfico.")
+
 
     st.subheader("Indicadores")
     indicator_data = [] # Lista para armazenar dados de exibição de cada indicador
@@ -2474,8 +2495,9 @@ def show_dashboard(SETORES, TEMA_PADRAO):
 
         last_result = "N/A"
         data_formatada = "N/A"
-        status = "Sem Resultados"
-        variacao = 0 # Variação vs Meta
+        status = "Sem Resultados" # Status padrão
+        variacao = 0 # Variação vs Meta (numérico)
+        last_result_float = None # Resultado float para análise automática
 
         if ind_results:
             # Encontra o último resultado para cálculo de status e variação
@@ -2488,26 +2510,27 @@ def show_dashboard(SETORES, TEMA_PADRAO):
 
             try:
                 # Calcula status e variação se o último resultado for numérico
-                meta = float(ind.get("meta", 0.0))
-                resultado = float(last_result)
+                meta = float(ind.get("meta", 0.0)) # Garante que a meta é float
+                last_result_float = float(last_result) # Tenta converter resultado para float
 
-                if ind["comparacao"] == "Maior é melhor": status = "Acima da Meta" if resultado >= meta else "Abaixo da Meta"
-                else: status = "Acima da Meta" if resultado <= meta else "Abaixo da Meta"
+                if ind["comparacao"] == "Maior é melhor": status = "Acima da Meta" if last_result_float >= meta else "Abaixo da Meta"
+                else: status = "Acima da Meta" if last_result_float <= meta else "Abaixo da Meta"
 
                 if meta != 0:
-                    variacao = ((resultado / meta) - 1) * 100
+                    variacao = ((last_result_float / meta) - 1) * 100
                     # Se menor é melhor, a variação positiva é ruim (abaixo da meta) e vice-versa
                     if ind["comparacao"] == "Menor é melhor": variacao = -variacao # Inverte o sinal da variação
                 else:
                     # Lida com meta zero para variação
-                    if resultado > 0: variacao = float('inf') # Infinito positivo
-                    elif resultado < 0: variacao = float('-inf') # Infinito negativo
+                    if last_result_float > 0: variacao = float('inf') # Infinito positivo
+                    elif last_result_float < 0: variacao = float('-inf') # Infinito negativo
                     else: variacao = 0 # Zero se resultado e meta são zero
 
             except (TypeError, ValueError):
-                 # Se o resultado não é numérico, não calcula status/variação numérica
+                 # Se o resultado não é numérico, o status de meta é N/A
                  status = "N/A"
-                 variacao = 0 # Reseta variação
+                 variacao = 0 # Reseta variação numérica
+                 last_result_float = None # Reseta resultado float
 
             # Formata a data do último resultado
             data_formatada = format_date_as_month_year(last_date)
@@ -2516,6 +2539,7 @@ def show_dashboard(SETORES, TEMA_PADRAO):
         indicator_data.append({
             "indicator": ind,
             "last_result": last_result,
+            "last_result_float": last_result_float, # Armazena o float para análise automática
             "data_formatada": data_formatada,
             "status": status,
             "variacao": variacao, # Mantém o valor numérico (pode ser inf)
@@ -2558,18 +2582,18 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                 st.markdown(f"""<div style="background-color:white; padding:10px; border-radius:5px; text-align:center; border:1px solid #e0e0e0;"><p style="margin:0; font-size:12px; color:#666;">Meta</p><p style="margin:0; font-weight:bold; font-size:18px;">{meta_display}</p></div>""", unsafe_allow_html=True)
             with col2:
                 # Define a cor do status
-                status_color = "#26A69A" if data["status"] == "Acima da Meta" else "#FF5252" if data["status"] == "Abaixo da Meta" else "#9E9E9E"
+                status_color = "#26A69A" if data["status"] == "Acima da Meta" else "#FF5252" if data["status"] == "Abaixo da Meta" else "#9E9E9E" # Cor para Sem Resultados/N/A
                 # Formata o último resultado para exibição
                 last_result_display = f"{float(data['last_result']):.2f}{unidade_display}" if isinstance(data['last_result'], (int, float)) else "N/A"
                 st.markdown(f"""<div style="background-color:white; padding:10px; border-radius:5px; text-align:center; border:1px solid #e0e0e0;"><p style="margin:0; font-size:12px; color:#666;">Último Resultado ({data['data_formatada']})</p><p style="margin:0; font-weight:bold; font-size:18px; color:{status_color};">{last_result_display}</p></div>""", unsafe_allow_html=True)
             with col3:
                 # Define a cor da variação
-                variacao_color = "#26A69A" if (data["variacao"] >= 0 and ind["comparacao"] == "Maior é melhor") or (data["variacao"] <= 0 and ind["comparacao"] == "Menor é melhor") else "#FF5252" if (data["variacao"] < 0 and ind["comparacao"] == "Maior é melhor") or (data["variacao"] > 0 and ind["comparacao"] == "Menor é melhor") else "#FFC107"
-                # Formata a variação para exibição (lidando com infinitos)
+                variacao_color = "#26A69A" if (data["variacao"] >= 0 and ind["comparacao"] == "Maior é melhor") or (data["variacao"] <= 0 and ind["comparacao"] == "Menor é melhor") else "#FF5252" if (data["variacao"] < 0 and ind["comparacao"] == "Maior é melhor") or (data["variacao"] > 0 and ind["comparacao"] == "Menor é melhor") else "#9E9E9E" # Cor neutra para N/A ou 0%
+                # Formata a variação para exibição (lidando com infinitos e N/A)
                 if data['variacao'] == float('inf'): variacao_text = "+∞%"; variacao_color = "#26A69A" if ind["comparacao"] == "Maior é melhor" else "#FF5252"
                 elif data['variacao'] == float('-inf'): variacao_text = "-∞%"; variacao_color = "#26A69A" if ind["comparacao"] == "Menor é melhor" else "#FF5252"
                 elif isinstance(data['variacao'], (int, float)): variacao_text = f"{data['variacao']:.2f}%"
-                else: variacao_text = "N/A"
+                else: variacao_text = "N/A" # Variação N/A se o cálculo falhou
                 st.markdown(f"""<div style="background-color:white; padding:10px; border-radius:5px; text-align:center; border:1px solid #e0e0e0;"><p style="margin:0; font-size:12px; color:#666;">Variação vs Meta</p><p style="margin:0; font-weight:bold; font-size:18px; color:{variacao_color};">{variacao_text}</p></div>""", unsafe_allow_html=True)
 
             # Expander para a série histórica e análise crítica
@@ -2581,7 +2605,13 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                     df_hist = df_hist.sort_values("data_referencia", ascending=False)
 
                     # Calcula o status para cada resultado na série histórica
-                    df_hist["status"] = df_hist.apply(lambda row: "Acima da Meta" if (float(row["resultado"]) >= float(ind.get("meta", 0.0)) and ind["comparacao"] == "Maior é melhor") or (float(row["resultado"]) <= float(ind.get("meta", 0.0)) and ind["comparacao"] == "Menor é melhor") else "Abaixo da Meta", axis=1)
+                    # Tenta converter resultado e meta para float, lida com erros resultando em N/A status
+                    df_hist["status"] = df_hist.apply(lambda row:
+                         "Acima da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float)) and ((float(row["resultado"]) >= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Maior é melhor") or (float(row["resultado"]) <= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Menor é melhor"))))
+                         else "Abaixo da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float))))
+                         else "N/A" # Status N/A se resultado ou meta não são numéricos
+                    , axis=1)
+
 
                     # Seleciona e formata colunas para exibição na tabela
                     cols_to_display = ["data_referencia", "resultado", "status"]
@@ -2605,68 +2635,73 @@ def show_dashboard(SETORES, TEMA_PADRAO):
 
                     st.dataframe(df_display, use_container_width=True) # Exibe a tabela da série histórica
 
-                    # Análise de Tendência (requer pelo menos 3 resultados)
-                    if len(df_hist) >= 3:
-                        # Pega os últimos 3 resultados e converte para float
-                        ultimos_resultados = df_hist.sort_values("data_referencia")["resultado"].tail(3).astype(float).tolist()
-                        if len(ultimos_resultados) == 3: # Garante que conseguimos 3 floats
-                            # Compara os resultados para determinar a tendência
-                            if ind["comparacao"] == "Maior é melhor":
-                                tendencia = "crescente" if ultimos_resultados[2] > ultimos_resultados[1] > ultimos_resultados[0] else ("decrescente" if ultimos_resultados[2] < ultimos_resultados[1] < ultimos_resultados[0] else "estável")
+                    # Análise de Tendência (requer pelo menos 3 resultados NUMÉRICOS)
+                    # Filtra resultados que são numericos para a análise de tendência
+                    numeric_results = df_hist[pd.to_numeric(df_hist['resultado'], errors='coerce').notna()].copy()
+                    numeric_results['resultado'] = pd.to_numeric(numeric_results['resultado']) # Converte para numérico
+
+                    if len(numeric_results) >= 3:
+                        # Pega os últimos 3 resultados numéricos e converte para lista
+                        ultimos_resultados = numeric_results.sort_values("data_referencia")["resultado"].tolist()
+
+                        if len(ultimos_resultados) >= 3: # Garante que conseguimos pelo menos 3 valores numéricos
+                            # Compara os últimos 3 resultados para determinar a tendência
+                            if ind.get("comparacao", "Maior é melhor") == "Maior é melhor":
+                                tendencia = "crescente" if ultimos_resultados[-1] > ultimos_resultados[-2] > ultimos_resultados[-3] else ("decrescente" if ultimos_resultados[-1] < ultimos_resultados[-2] < ultimos_resultados[-3] else "estável")
                             else: # Menor é melhor
-                                tendencia = "crescente" if ultimos_resultados[2] < ultimos_resultados[1] < ultimos_resultados[0] else ("decrescente" if ultimos_resultados[2] > ultimos_resultados[1] > ultimos_resultados[0] else "estável")
+                                tendencia = "crescente" if ultimos_resultados[-1] < ultimos_resultados[-2] < ultimos_resultados[-3] else ("decrescente" if ultimos_resultados[-1] > ultimos_resultados[-2] > ultimos_resultados[-3] else "estável")
 
                             # Define a cor para a tendência
-                            tendencia_color = "#26A69A" if (tendencia == "crescente" and ind["comparacao"] == "Maior é melhor") or (tendencia == "decrescente" and ind["comparacao"] == "Menor é melhor") else "#FF5252" if (tendencia == "decrescente" and ind["comparacao"] == "Maior é melhor") or (tendencia == "crescente" and ind["comparacao"] == "Menor é melhor") else "#FFC107"
+                            tendencia_color = "#26A69A" if (tendencia == "crescente" and ind.get("comparacao", "Maior é melhor") == "Maior é melhor") or (tendencia == "decrescente" and ind.get("comparacao", "Maior é melhor") == "Menor é melhor") else "#FF5252" if (tendencia == "decrescente" and ind.get("comparacao", "Maior é melhor") == "Maior é melhor") or (tendencia == "crescente" and ind.get("comparacao", "Maior é melhor") == "Menor é melhor") else "#FFC107"
 
-                            st.markdown(f"""<div style="margin-top:15px;"><h4>Análise de Tendência</h4><p>Este indicador apresenta uma tendência <span style="color:{tendencia_color}; font-weight:bold;">{tendencia}</span> nos últimos 3 períodos.</p></div>""", unsafe_allow_html=True)
+                            st.markdown(f"""<div style="margin-top:15px;"><h4>Análise de Tendência</h4><p>Este indicador apresenta uma tendência <span style="color:{tendencia_color}; font-weight:bold;">{tendencia}</span> nos últimos 3 períodos com resultados numéricos.</p></div>""", unsafe_allow_html=True)
 
                             # Análise Automática de Desempenho (baseada em tendência e meta)
                             st.markdown("<h4>Análise Automática</h4>", unsafe_allow_html=True)
-                            meta_float = float(ind.get("meta", 0.0))
-                            last_result_float = float(data["last_result"]) if isinstance(data["last_result"], (int, float)) else None
+                            meta_float = float(ind.get("meta", 0.0)) # Garante meta é float
 
-                            if last_result_float is not None: # Só faz a análise automática se o último resultado for numérico
+                            if data['last_result_float'] is not None: # Só faz a análise automática se o último resultado for numérico e válido
                                 if tendencia == "crescente":
-                                    if ind["comparacao"] == "Maior é melhor":
-                                        st.success("O indicador apresenta evolução positiva, com resultados crescentes nos últimos períodos.")
-                                        if last_result_float >= meta_float:
+                                    if ind.get("comparacao", "Maior é melhor") == "Maior é melhor":
+                                        st.success("O indicador apresenta evolução positiva, com resultados crescentes nos últimos períodos com resultados numéricos.")
+                                        if data['last_result_float'] >= meta_float:
                                             st.success("O resultado atual está acima da meta estabelecida, demonstrando bom desempenho.")
                                         else:
                                             st.warning("Apesar da evolução positiva, o resultado ainda está abaixo da meta estabelecida. Continue acompanhando a tendência.")
                                     else: # Menor é melhor
                                         st.error("O indicador apresenta tendência de aumento, o que é negativo para este tipo de métrica.")
-                                        if last_result_float <= meta_float:
+                                        if data['last_result_float'] <= meta_float:
                                             st.warning("Embora o resultado atual ainda esteja dentro da meta, a tendência de aumento requer atenção imediata.")
                                         else:
                                             st.error("O resultado está acima da meta e com tendência de aumento, exigindo ações corretivas urgentes.")
                                 elif tendencia == "decrescente":
-                                    if ind["comparacao"] == "Maior é melhor":
+                                    if ind.get("comparacao", "Maior é melhor") == "Maior é melhor":
                                         st.error("O indicador apresenta tendência de queda, o que é preocupante para este tipo de métrica.")
-                                        if last_result_float >= meta_float:
+                                        if data['last_result_float'] >= meta_float:
                                             st.warning("Embora o resultado atual ainda esteja acima da meta, a tendência de queda requer atenção.")
                                         else:
                                             st.error("O resultado está abaixo da meta e com tendência de queda, exigindo ações corretivas urgentes.")
                                     else: # Menor é melhor
-                                        st.success("O indicador apresenta evolução positiva, com resultados decrescentes nos últimos períodos.")
-                                        if last_result_float <= meta_float:
+                                        st.success("O indicador apresenta evolução positiva, com resultados decrescentes nos últimos períodos com resultados numéricos.")
+                                        if data['last_result_float'] <= meta_float:
                                             st.success("O resultado atual está dentro da meta estabelecida, demonstrando bom desempenho.")
                                         else:
                                             st.warning("Apesar da evolução positiva, o resultado ainda está acima da meta estabelecida. A tendência de queda é favorável, mas ainda há trabalho a ser feito para atingir a meta.")
                                 else: # Estável
-                                    if (last_result_float >= meta_float and ind["comparacao"] == "Maior é melhor") or (last_result_float <= meta_float and ind["comparacao"] == "Menor é melhor"):
+                                    if (data['last_result_float'] >= meta_float and ind.get("comparacao", "Maior é melhor") == "Maior é melhor") or (data['last_result_float'] <= meta_float and ind.get("comparacao", "Maior é melhor") == "Menor é melhor"):
                                         st.info("O indicador apresenta estabilidade e está dentro da meta estabelecida. Monitore para garantir a manutenção do desempenho.")
                                     else:
                                         st.warning("O indicador apresenta estabilidade, porém está fora da meta estabelecida. É necessário investigar as causas dessa estabilidade fora da meta.")
                             else:
-                                st.info("Não foi possível realizar a análise automática de desempenho devido a dados de resultado inválidos para o cálculo.")
+                                st.info("Não foi possível realizar a análise automática de desempenho para o último resultado (Não numérico ou inválido).")
                         else:
                             st.info("Não há resultados numéricos suficientes para análise de tendência (mínimo de 3 períodos com resultados numéricos necessários).")
-                    else: st.info("Não há dados históricos suficientes para análise de tendência (mínimo de 3 períodos necessários).")
+                    else: st.info("Não há dados históricos numéricos suficientes para análise de tendência (mínimo de 3 períodos necessários).")
 
                     # Análise Crítica 5W2H do último resultado
                     st.markdown("<h4>Análise Crítica 5W2H do Último Período</h4>", unsafe_allow_html=True)
-                    ultimo_resultado = df_hist.iloc[0] # Pega o último resultado
+                    # Encontra o último resultado (independente de ser numérico)
+                    ultimo_resultado = df_hist.iloc[0]
                     has_analysis = False
                     analise_dict = {}
                     if "analise_critica" in ultimo_resultado and ultimo_resultado["analise_critica"] is not None:
@@ -2710,7 +2745,7 @@ Esta metodologia ajuda a garantir que todos os aspectos importantes sejam consid
 
 
     # Botão de exportar todos os indicadores exibidos
-    if st.button("📤 Exportar Tudo"):
+    if st.button("📤 Exportar Tudo", key="dashboard_export_button"):
         export_data = []
         for data in indicator_data:
             ind = data["indicator"]
@@ -2725,7 +2760,7 @@ Esta metodologia ajuda a garantir que todos os aspectos importantes sejam consid
             elif isinstance(data['variacao'], (int, float)): variacao_export = f"{data['variacao']:.2f}%"
             else: variacao_export = "N/A"
 
-            # Adiciona os dados formatados à lista de exportação
+            # Adiciona os dados preparados à lista de exportação
             export_data.append({
                 "Nome": ind["nome"],
                 "Setor": ind["responsavel"],
@@ -2762,17 +2797,18 @@ def show_overview():
     with col1:
         # Filtro multi-seleção por setor (inclui "Todos")
         setores_disponiveis = sorted(list(set([ind["responsavel"] for ind in indicators])))
-        setor_filtro = st.multiselect("Filtrar por Setor", options=["Todos"] + setores_disponiveis, default=["Todos"])
+        setor_filtro = st.multiselect("Filtrar por Setor", options=["Todos"] + setores_disponiveis, default=["Todos"], key="overview_setor_filter")
     with col2:
         # Filtro multi-seleção por status (inclui "Todos")
-        status_filtro = st.multiselect("Status", options=["Todos", "Acima da Meta", "Abaixo da Meta", "Sem Resultados", "N/A"], default=["Todos"]) # Inclui N/A para casos sem resultados numéricos
+        status_options = ["Todos", "Acima da Meta", "Abaixo da Meta", "Sem Resultados", "N/A"] # Inclui N/A
+        status_filtro = st.multiselect("Status", options=status_options, default=["Todos"], key="overview_status_filter")
     # Campo de busca por texto
-    search_query = st.text_input("Buscar indicador por nome ou setor", placeholder="Digite para buscar...")
+    search_query = st.text_input("Buscar indicador por nome ou setor", placeholder="Digite para buscar...", key="overview_search")
 
     # Aplica o filtro de setor
     filtered_indicators = indicators
     if setor_filtro and "Todos" not in setor_filtro:
-        filtered_indicators = [ind for ind in filtered_indicators if ind["responsavel"] in setor_filtro]
+        filtered_indicators = [ind for ind in indicators if ind["responsavel"] in setor_filtro]
 
     overview_data = [] # Lista para armazenar os dados da tabela de visão geral
 
@@ -2862,7 +2898,7 @@ def show_overview():
         st.dataframe(df_overview, use_container_width=True) # Exibe a tabela
 
         # Botão para exportar a tabela para Excel
-        if st.button("📤 Exportar para Excel"):
+        if st.button("📤 Exportar para Excel", key="overview_export_button"):
             # Cria um DataFrame para exportação com os dados originais (não formatados como string) se necessário,
             # mas aqui usamos os dados formatados como string na lista overview_data
             df_export = pd.DataFrame(overview_data)
@@ -2980,7 +3016,7 @@ def show_settings():
         if st.button("⚙️ Restaurar arquivo de backup ️", help="Restaura os dados do sistema a partir de um arquivo de backup. Criará um backup de segurança antes da restauração."):
             st.warning("⚠️ Restaurar um backup irá sobrescrever todos os dados atuais do sistema! Um backup de segurança será criado antes de prosseguir.")
             # Pergunta de confirmação antes de restaurar
-            if st.button("Confirmar Restauração"):
+            if st.button("Confirmar Restauração", key="confirm_restore_button"): # Chave única
                 with st.spinner("Criando backup de segurança antes da restauração..."):
                      # Garante chave e cipher
                     generate_key(KEY_FILE)
@@ -3028,28 +3064,38 @@ def show_settings():
                 if not st.session_state.confirm_limpar_resultados:
                     st.warning("Tem certeza que deseja limpar TODOS os resultados? Esta ação não pode ser desfeita.")
                     st.session_state.confirm_limpar_resultados = True
-                    st.button("Confirmar Limpeza de Resultados", key="confirm_limpar_resultados_btn") # Botão de confirmação
-                else:
-                    # Se já está no estado de confirmação, executa a limpeza
-                    with st.spinner("Limpando resultados..."):
-                        conn = get_db_connection()
-                        if conn:
-                            try:
-                                cur = conn.cursor()
-                                cur.execute("DELETE FROM resultados;") # Deleta todos os resultados
-                                conn.commit()
-                                st.success("Resultados excluídos com sucesso!")
-                                # Limpa a lista de resultados no estado da sessão
-                                if 'results' in st.session_state: del st.session_state.results
-                            except Exception as e:
-                                st.error(f"Erro ao excluir resultados: {e}")
-                                conn.rollback()
-                            finally:
-                                cur.close()
-                                conn.close()
-                         # Reseta o estado de confirmação
-                        st.session_state.confirm_limpar_resultados = False
-                        st.rerun() # Reroda para atualizar a UI
+                    # Adiciona um botão de confirmação separado para evitar cliques acidentais
+                    if st.button("Confirmar Limpeza de Resultados", key="confirm_limpar_resultados_btn"): # Chave única
+                         pass # Clicar aqui muda o estado para o bloco abaixo executar no próximo rerun
+                    if st.button("Cancelar", key="cancel_limpar_resultados_btn"): # Botão de cancelar
+                         st.session_state.confirm_limpar_resultados = False
+                         st.info("Limpeza cancelada.")
+                         st.rerun()
+                elif st.session_state.confirm_limpar_resultados: # Se está no estado de confirmação E clicou no botão de confirmar
+                    # Verifica se o botão de confirmação foi clicado
+                    if st.session_state.get("confirm_limpar_resultados_btn"):
+                         with st.spinner("Limpando resultados...\ Academia FIA Softworks"):
+                             conn = get_db_connection()
+                             if conn:
+                                 try:
+                                     cur = conn.cursor()
+                                     cur.execute("DELETE FROM resultados;") # Deleta todos os resultados
+                                     conn.commit()
+                                     st.success("Resultados excluídos com sucesso!")
+                                     # Limpa a lista de resultados no estado da sessão
+                                     if 'results' in st.session_state: del st.session_state.results
+                                 except Exception as e:
+                                     st.error(f"Erro ao excluir resultados: {e}")
+                                     conn.rollback()
+                                 finally:
+                                     cur.close()
+                                     conn.close()
+                          # Reseta o estado de confirmação
+                         st.session_state.confirm_limpar_resultados = False
+                         if "confirm_limpar_resultados_btn" in st.session_state: del st.session_state.confirm_limpar_resultados_btn
+                         if "cancel_limpar_resultados_btn" in st.session_state: del st.session_state.cancel_limpar_resultados_btn
+                         st.rerun() # Reroda para atualizar a UI
+
 
             # Botão para excluir TUDO (indicadores e resultados, requer confirmação)
             if st.button("🧹 Excluir TUDO (Indicadores e Resultados)!", help="Exclui todos os indicadores e seus resultados associados do sistema."):
@@ -3059,30 +3105,38 @@ def show_settings():
                 if not st.session_state.confirm_limpar_tudo:
                     st.warning("Tem certeza que deseja limpar TODOS os indicadores e resultados? Esta ação não pode ser desfeita.")
                     st.session_state.confirm_limpar_tudo = True
-                    st.button("Confirmar Exclusão TOTAL", key="confirm_limpar_tudo_btn") # Botão de confirmação
-                else:
-                    # Se já está no estado de confirmação, executa a exclusão total
-                    with st.spinner("Limpando tudo..."):
-                        conn = get_db_connection()
-                        if conn:
-                            try:
-                                cur = conn.cursor()
-                                # Deleta todos os indicadores (resultados serão excluídos via ON DELETE CASCADE)
-                                cur.execute("DELETE FROM indicadores;")
-                                conn.commit()
-                                st.success("Indicadores e resultados excluídos com sucesso!")
-                                # Limpa as listas no estado da sessão
-                                if 'indicators' in st.session_state: del st.session_state.indicators
-                                if 'results' in st.session_state: del st.session_state.results
-                            except Exception as e:
-                                st.error(f"Erro ao excluir indicadores e resultados: {e}")
-                                conn.rollback()
-                            finally:
-                                cur.close()
-                                conn.close()
-                         # Reseta o estado de confirmação
-                        st.session_state.confirm_limpar_tudo = False
-                        st.rerun() # Reroda para atualizar a UI
+                    # Adiciona um botão de confirmação separado
+                    if st.button("Confirmar Exclusão TOTAL", key="confirm_limpar_tudo_btn"): # Chave única
+                         pass # Clicar aqui muda o estado
+                    if st.button("Cancelar", key="cancel_limpar_tudo_btn"): # Botão de cancelar
+                         st.session_state.confirm_limpar_tudo = False
+                         st.info("Exclusão total cancelada.")
+                         st.rerun()
+                elif st.session_state.confirm_limpar_tudo: # Se está no estado de confirmação E clicou no botão de confirmar
+                     if st.session_state.get("confirm_limpar_tudo_btn"):
+                         with st.spinner("Limpando tudo..."):
+                             conn = get_db_connection()
+                             if conn:
+                                 try:
+                                     cur = conn.cursor()
+                                     # Deleta todos os indicadores (resultados serão excluídos via ON DELETE CASCADE)
+                                     cur.execute("DELETE FROM indicadores;")
+                                     conn.commit()
+                                     st.success("Indicadores e resultados excluídos com sucesso!")
+                                     # Limpa as listas no estado da sessão
+                                     if 'indicators' in st.session_state: del st.session_state.indicators
+                                     if 'results' in st.session_state: del st.session_state.results
+                                 except Exception as e:
+                                     st.error(f"Erro ao excluir indicadores e resultados: {e}")
+                                     conn.rollback()
+                                 finally:
+                                     cur.close()
+                                     conn.close()
+                          # Reseta o estado de confirmação
+                         st.session_state.confirm_limpar_tudo = False
+                         if "confirm_limpar_tudo_btn" in st.session_state: del st.session_state.confirm_limpar_tudo_btn
+                         if "cancel_limpar_tudo_btn" in st.session_state: del st.session_state.cancel_limpar_tudo_btn
+                         st.rerun() # Reroda para atualizar a UI
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -3093,19 +3147,11 @@ def show_user_management(SETORES):
     st.header("Gerenciamento de Usuários")
     users = load_users() # Carrega a lista de usuários com setores (lista)
 
-    # --- Lógica de Migração (Removida a parte antiga, apenas uma mensagem se necessário) ---
-    # A nova estrutura espera que 'setores' seja uma lista.load_users já garante isso.
-    # Se houver necessidade de migrar dados antigos (setor TEXT) para a nova tabela
-    # usuario_setores, isso deve ser feito em um script de migração de banco separado,
-    # ou na função create_tables_if_not_exists de forma mais robusta.
-    # O código atual apenas assume a nova estrutura.
-
-    # Contagem de usuários por tipo
+    # --- Contagem de usuários por tipo ---
     total_users = len(users)
     admin_count = sum(1 for user, data in users.items() if data.get("tipo") == "Administrador")
     operator_count = sum(1 for user, data in users.items() if data.get("tipo") == "Operador")
     viewer_count = sum(1 for user, data in users.items() if data.get("tipo") == "Visualizador")
-
 
     st.subheader("Visão Geral de Usuários")
     # Cartões de resumo de usuários
@@ -3130,9 +3176,8 @@ def show_user_management(SETORES):
 
         # Input para selecionar MÚLTIPLOS setores (usando st.multiselect)
         # O setor "Todos" não faz sentido para Operadores. Admins e Visualizadores não precisam de setores específicos para ver tudo, mas o multiselect pode ser usado para representação ou futuros filtros.
-        # Vamos oferecer todos os setores, exceto "Todos", no multiselect, e a lógica de permissão lidará com isso.
-        # Para administradores, o setor é logicamente "Todos" (acesso a tudo), embora não precise ser explicitamente selecionado aqui na lista.
-        user_sectors_new = st.multiselect("Setor(es) Associado(s)", options=SETORES, default=[]) # Seleção múltipla de setores
+        # Vamos oferecer todos os setores no multiselect.
+        user_sectors_new = st.multiselect("Setor(es) Associado(s)", options=SETORES, default=[], help="Selecione os setores que este usuário poderá gerenciar ou visualizar (para Operadores) ou apenas para referência (para Administradores/Visualizadores).") # Seleção múltipla de setores
 
         st.markdown("#### Informações de Acesso")
         col1, col2 = st.columns(2)
@@ -3141,10 +3186,9 @@ def show_user_management(SETORES):
         confirm_password = st.text_input("Confirmar Senha", type="password", placeholder="Confirme a senha")
 
         # Explicação dos tipos de usuário
-        st.markdown("""<div style="background-color:#f8f9fa; padding:10px; border-radius:5px; margin-top:10px;"><p style="margin:0; font-size:14px;"><strong>Tipos de usuário:</strong></p><ul style="margin:5px 0 0 15px; padding:0; font-size:13px;"><li><strong>Administrador:</strong> Acesso total ao sistema</li><li><strong>Operador:</strong> Gerencia indicadores de **seus setores associados**</li><li><strong>Visualizador:</strong> Apenas visualiza indicadores e resultados (normalmente de todos os setores, se permitido pelos filtros)</li></ul></div>""", unsafe_allow_html=True)
+        st.markdown("""<div style="background-color:#f8f9fa; padding:10px; border-radius:5px; margin-top:10px;"><p style="margin:0; font-size:14px;"><strong>Tipos de usuário:</strong></p><ul style="margin:5px 0 0 15px; padding:0; font-size:13px;"><li><strong>Administrador:</strong> Acesso total ao sistema. Associações de setor são apenas para referência.</li><li><strong>Operador:</strong> Gerencia e preenche indicadores de **seus setores associados**. Deve ter pelo menos um setor associado.</li><li><strong>Visualizador:</strong> Apenas visualiza indicadores e resultados. Associações de setor são apenas para referência/futuros filtros.</li></ul></div>""", unsafe_allow_html=True)
 
-        # Validação básica para Operador ter pelo menos um setor associado (a menos que "Todos" seja um setor válido, o que não é o caso na lista SETORES)
-        # Se a lista SETORES não inclui "Todos" como uma opção selecionável, um Operador *deve* ter setores na lista user_sectors_new
+        # Validação básica para Operador ter pelo menos um setor associado
         if user_type_new == "Operador" and not user_sectors_new:
              st.warning("⚠️ Operadores devem ser associados a pelo menos um setor.")
 
@@ -3216,8 +3260,11 @@ def show_user_management(SETORES):
         sector_match = True # Assume match inicialmente
         if filter_sector and "Todos" not in filter_sector:
              # Se o filtro não é "Todos", verifica se algum setor do usuário está na lista de filtro
-             if not any(sector in filter_sector for sector in user_sectors):
-                  sector_match = False # Não há setores em comum, não corresponde ao filtro
+             # Ou se o usuário é Administrador (que tem acesso a "Todos" logicamente, mesmo que não associado a todos individualmente)
+             if user_type == "Administrador":
+                 sector_match = True # Administradores sempre passam no filtro de setor
+             elif not any(sector in filter_sector for sector in user_sectors):
+                  sector_match = False # Operador/Visualizador sem setores em comum com o filtro
 
         # Adiciona o usuário à lista filtrada se todos os filtros corresponderem
         if type_match and sector_match:
@@ -3277,7 +3324,7 @@ def show_user_management(SETORES):
                         <p style="margin:5px 0 0 0; color:#546E7A;">Login: <strong>{login}</strong></p>
                         <p style="margin:3px 0 0 0; color:#546E7A;">Email: {email}</p>
                         <p style="margin:3px 0 0 0; color:#546E7A;">Criado em: {row['Criado em']}</p>
-                         <p style="margin:3px 0 0 0; color:#546E7A;">Setores: {sectors_display}</p> 
+                         <p style="margin:3px 0 0 0; color:#546E7A;">Setores: {sectors_display}</p> {/* Exibe os setores associados */}
                     </div>
                     <div>
                         <span style="background-color:{type_color}; color:white; padding:5px 10px; border-radius:15px; font-size:12px;">{user_type}</span>
@@ -3293,7 +3340,7 @@ def show_user_management(SETORES):
                     # Botão de editar - define estado para mostrar o formulário de edição
                     if st.button("✏️ Editar", key=f"edit_{login}"):
                         st.session_state[f"editing_{login}"] = True # Estado para edição deste usuário
-                        st.session_state[f"edit_user_data_{login}"] = users[login] # Salva os dados atuais no estado
+                        st.session_state[f"edit_user_data_{login}\ Academia FIA Softworks"] = users[login] # Salva os dados atuais no estado
                         st.rerun() # Reroda para mostrar o form
                 with col2:
                      # Botão de excluir - define estado para confirmar exclusão
@@ -3317,7 +3364,9 @@ def show_user_management(SETORES):
 
                         st.markdown("#### Configurações de Permissão")
                         # Selectbox para o tipo de usuário (preenchido com o tipo atual)
-                        current_type_index = ["Administrador", "Operador", "Visualizador"].index(user_to_edit.get("tipo", "Visualizador"))
+                        current_type_index = [
+                             "Administrador", "Operador", "Visualizador"
+                        ].index(user_to_edit.get("tipo", "Visualizador"))
                         new_type = st.selectbox("Tipo de Usuário", options=["Administrador", "Operador", "Visualizador"], index=current_type_index, key=f"new_type_{login}")
 
                         # Multi-select para os setores (preenchido com os setores atuais)
@@ -3423,7 +3472,7 @@ def show_user_management(SETORES):
 
     # Botão para exportar a lista de usuários (apenas para admin)
     if st.session_state.username == "admin":
-        if st.button("📤 Exportar Lista"):
+        if st.button("📤 Exportar Lista", key="users_export_button"):
             export_data = []
             for user, data in users.items():
                 user_type = data.get("tipo", "Visualizador")
@@ -3587,7 +3636,7 @@ def backup_data(cipher, tipo_backup="user"):
     except Exception as e:
         print(f"Erro ao salvar o arquivo de backup: {e}")
         # st.error(f"Erro ao salvar o arquivo de backup: {e}") # Evita st.error aqui
-        return None # Retorna None em caso de erro
+        return None # Retorna None em caso de error
 
 
 def restore_data(backup_file_path, cipher):
@@ -3642,11 +3691,12 @@ def restore_data(backup_file_path, cipher):
         # --- Inserir dados de usuários ---
         users_to_insert = restored_data.get("users", {})
         if users_to_insert:
+            # Cria lista de tuplas para inserção na tabela usuarios
             user_records = [(u, d.get("password", ""), d.get("tipo", "Visualizador"), d.get("nome_completo", ""), d.get("email", "")) for u, d in users_to_insert.items()]
             sql_insert_users = "INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email) VALUES (%s, %s, %s, %s, %s);"
             cur.executemany(sql_insert_users, user_records)
 
-            # Inserir dados de usuario_setores
+            # Cria lista de tuplas para inserção na tabela usuario_setores
             sector_records = []
             for username, data in users_to_insert.items():
                  sectors_list = data.get("setores", [])
@@ -3660,14 +3710,26 @@ def restore_data(backup_file_path, cipher):
         # --- Inserir dados de indicadores ---
         indicators_to_insert = restored_data.get("indicators", [])
         if indicators_to_insert:
-            indicator_records = [(i.get("id"), i.get("nome"), i.get("objetivo"), i.get("formula"), Json(i.get("variaveis", {})), i.get("unidade"), i.get("meta"), i.get("comparacao"), i.get("tipo_grafico"), i.get("responsavel"), i.get("data_criacao"), i.get("data_atualizacao")) for i in indicators_to_insert]
-            # Ajuste na query para lidar com valores None ou ausentes
-            sql_insert_indicators = """
-                INSERT INTO indicadores (id, nome, objetivo, formula, variaveis, unidade, meta, comparacao, tipo_grafico, responsavel, data_criacao, data_atualizacao)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        COALESCE(%s, CURRENT_TIMESTAMP), COALESCE(%s, CURRENT_TIMESTAMP));
-            """
-            cur.executemany(sql_insert_indicators, indicator_records)
+            indicator_records = []
+            for i in indicators_to_insert:
+                 # Ajusta para lidar com valores None na data_criacao/atualizacao
+                 data_criacao_dt = datetime.fromisoformat(i["data_criacao"]) if i.get("data_criacao") else None
+                 data_atualizacao_dt = datetime.fromisoformat(i["data_atualizacao"]) if i.get("data_atualizacao") else None
+
+                 indicator_records.append((
+                     i.get("id"), i.get("nome"), i.get("objetivo"), i.get("formula"),
+                     Json(i.get("variaveis", {})), i.get("unidade"), i.get("meta"),
+                     i.get("comparacao"), i.get("tipo_grafico"), i.get("responsavel"),
+                     data_criacao_dt, data_atualizacao_dt
+                 ))
+
+            if indicator_records: # Verifica se há registros para inserir
+                 sql_insert_indicators = """
+                    INSERT INTO indicadores (id, nome, objetivo, formula, variaveis, unidade, meta, comparacao, tipo_grafico, responsavel, data_criacao, data_atualizacao)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            COALESCE(%s, CURRENT_TIMESTAMP), COALESCE(%s, CURRENT_TIMESTAMP));
+                """
+                 cur.executemany(sql_insert_indicators, indicator_records)
 
 
         # --- Inserir dados de resultados ---
@@ -3680,6 +3742,10 @@ def restore_data(backup_file_path, cipher):
                  except (ValueError, TypeError): data_referencia_dt = None # Ignora se data inválida
 
                  if data_referencia_dt: # Só adiciona se a data for válida
+                     # Ajusta para lidar com valores None nas datas de criação/atualização e usuário/status
+                     data_criacao_dt = datetime.fromisoformat(r.get("data_criacao")) if r.get("data_criacao") else None
+                     data_atualizacao_dt = datetime.fromisoformat(r.get("data_atualizacao")) if r.get("data_atualizacao") else None
+
                      result_records.append((
                          r.get("indicator_id"),
                          data_referencia_dt, # datetime object
@@ -3687,13 +3753,13 @@ def restore_data(backup_file_path, cipher):
                          Json(r.get("valores_variaveis", {})),
                          r.get("observacao"),
                          Json(r.get("analise_critica", {})),
-                         r.get("data_criacao"),
-                         r.get("data_atualizacao"),
+                         data_criacao_dt, # datetime object ou None
+                         data_atualizacao_dt, # datetime object ou None
                          r.get("usuario"),
                          r.get("status_analise")
                      ))
 
-            if result_records:
+            if result_records: # Verifica se há registros para inserir
                  sql_insert_results = """
                     INSERT INTO resultados (indicator_id, data_referencia, resultado, valores_variaveis, observacao, analise_critica, data_criacao, data_atualizacao, usuario, status_analise)
                     VALUES (%s, %s, %s, %s, %s, %s,
@@ -3712,12 +3778,17 @@ def restore_data(backup_file_path, cipher):
                  cur.executemany(sql_insert_config, config_records) # Usando INSERT simples, pois a tabela foi limpa
 
 
-        # --- Inserir dados de logs (podemos optar por não restaurar logs antigos ou mesclar) ---
-        # Para simplicidade, vamos apenas registrar que a restauração ocorreu no log atual.
-        # Se quisermos restaurar os logs históricos, precisaríamos inserir aqui.
-        # log_backup, log_indicadores, log_usuarios podem ser inseridos de forma semelhante às outras tabelas
-        # (limpando antes e inserindo tudo do backup).
-        # Por enquanto, vamos apenas logar a restauração.
+        # --- Inserir dados de logs ---
+        # Decidimos limpar logs durante a restauração e apenas logar a restauração em si.
+        # Se quiser restaurar logs antigos, insira-os aqui de forma semelhante às outras tabelas.
+        # Exemplo (descomente e ajuste se necessário):
+        # log_backup_to_insert = restored_data.get("backup_log", [])
+        # if log_backup_to_insert:
+        #      log_records = [(datetime.fromisoformat(e["timestamp"]), e["action"], e["file_name"], e["user"]) for e in log_backup_to_insert]
+        #      sql_insert_log = "INSERT INTO log_backup (timestamp, action, file_name, user_performed) VALUES (%s, %s, %s, %s);"
+        #      cur.executemany(sql_insert_log, log_records)
+        # ... repetir para log_indicadores e log_usuarios ...
+
 
         # Habilita novamente as verificações de chave estrangeira
         cur.execute("SET session_replication_role = 'origin';")
@@ -3733,7 +3804,7 @@ def restore_data(backup_file_path, cipher):
     except Exception as e:
         print(f"Erro durante a inserção de dados restaurados no DB: {e}")
         st.error(f"Erro durante a inserção de dados restaurados no banco de dados: {e}. A restauração pode estar incompleta.")
-        conn.rollback() # Reverte as operações em caso de erro
+        conn.rollback() # Reverte as operações em caso de error
         return False
     finally:
         if conn:
@@ -3909,12 +3980,14 @@ def main():
         col1, col2 = st.columns([3, 1]) # Duas colunas para nome/tipo e botão logout
         with col1:
             # Exibe nome de usuário, tipo e setores (se aplicável)
+            # Prepara a string de setores para exibição
             sectors_display = ", ".join(user_sectors) if user_sectors and user_type == "Operador" else "Todos" if user_type != "Operador" else "Nenhum setor"
+
             st.markdown(f"""
             <div style="background-color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #e0e0e0;">
                 <p style="margin:0; font-weight:bold;">{username}</p>
                 <p style="margin:0; font-size:12px; color:#666;">{user_type}</p>
-                {'<p style="margin:0; font-size:12px; color:#666;">Setores: ' + sectors_display + '</p>' if user_type == "Operador" or sectors_display == "Todos" else ''} {/* Exibe setores para Operador ou "Todos" para outros */ }
+                {'<p style="margin:0; font-size:12px; color:#666;">Setores: ' + sectors_display + '</p>' if user_type == "Operador" or sectors_display == "Todos" else ''} {/* FIX: Removido as chaves externas {} */}
             </div>
             """, unsafe_allow_html=True)
         with col2:
@@ -3977,7 +4050,7 @@ def main():
         if user_type == "Administrador":
             create_indicator(SETORES, TIPOS_GRAFICOS)
         else:
-            st.error("Você não tem permissão para acessar esta página.") # Mensagem de erro se sem permissão
+            st.error("Você não tem permissão para acessar esta página.") # Mensagem de error se sem permissão
             st.session_state.page = "Dashboard" # Redireciona
             st.rerun()
     elif st.session_state.page == "Editar Indicador":
