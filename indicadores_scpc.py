@@ -2605,7 +2605,7 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                     # Tenta converter resultado e meta para float, lida com erros resultando em N/A status
                     df_hist["status"] = df_hist.apply(lambda row:
                          "Acima da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float)) and ((float(row["resultado"]) >= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Maior é melhor") or (float(row["resultado"]) <= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Menor é melhor"))))
-                         else "Abaixo da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float))))
+                         else "Abaixo da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float)))
                          else "N/A" # Status N/A se resultado ou meta não são numéricos
                     , axis=1)
 
