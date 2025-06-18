@@ -1525,36 +1525,6 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
              for var in vars_to_remove:
                  if var in st.session_state.current_var_descriptions:
                      del st.session_state.current_var_descriptions[var]
-             # Reseta valores de teste ao mudar de indicador
-             st.session_state.current_variable_values = {}
-             st.session_state.current_test_result = None # Adiciona estado para o resultado do teste na edição
-
-        # Chave para o estado de confirmação de exclusão (única por indicador)
-        delete_state_key = f"delete_state_{selected_indicator['id']}"
-        if delete_state_key not in st.session_state:
-            st.session_state[delete_state_key] = None # 'None', 'confirming', 'deleting'
-
-        # Formulário principal de edição
-        with st.form(key=f"edit_form_{selected_indicator['id']}"): # Chave única para o formulário
-            # Campos de entrada, preenchidos com os valores atuais do indicador
-            nome = st.text_input("Nome do Indicador", value=selected_indicator["nome"])
-            objetivo = st.text_area("Objetivo", value=selected_indicator["objetivo"])
-            unidade = st.text_input("Unidade do Resultado", value=selected_indicator.get("unidade", ""), placeholder="Ex: %", key=f"edit_unidade_input_{selected_indicator['id']}")
-            formula = st.text_input("Fórmula de Cálculo (Use letras para variáveis, ex: A+B/C)", value=selected_indicator.get("formula", ""), placeholder="Ex: (DEMISSOES / TOTAL_FUNCIONARIOS) * 100", key=f"edit_formula_input_{selected_indicator['id']}")
-            # Verifica se as variáveis na fórmula mudaram e atualiza o estado da sessão
-            current_detected_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', formula))))
-            if st.session_state.current_formula_vars != current_detected_vars:
-                 st.session_state.current_formula_vars = current_detected_vars
-                 # Mantém descrições existentes para variáveis que ainda estão na nova fórmula
-                 new_var_descriptions = {}
-                 for var in current_detected_vars:
-                      new_var_descriptions[var] = st.session_state.current_var_descriptions.get(var, "")
-                 st.session_state.current_var_descriptions = new_var_descriptions
-                 # Remove descrições de variáveis que não estão mais na nova fórmula
-                 vars_to_remove = [v for v in st.session_state.current_var_descriptions if v not in st.session_state.current_formula_vars]
-                 for var in vars_to_remove:
-                     if var in st.session_state.current_var_descriptions:
-                         del st.session_state.current_var_descriptions[var]
 
 
             st.markdown("---")
@@ -2605,7 +2575,7 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                     # Tenta converter resultado e meta para float, lida com erros resultando em N/A status
                     df_hist["status"] = df_hist.apply(lambda row:
                          "Acima da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float)) and ((float(row["resultado"]) >= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Maior é melhor") or (float(row["resultado"]) <= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Menor é melhor"))))
-                         else "Abaixo da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float)))
+                         else "Abaixo da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float))) # Corrected parenthesis
                          else "N/A" # Status N/A se resultado ou meta não são numéricos
                     , axis=1)
 
@@ -3069,8 +3039,7 @@ def show_settings():
                          st.info("Limpeza cancelada.")
                          st.rerun()
                 elif st.session_state.confirm_limpar_resultados: # Se está no estado de confirmação E clicou no botão de confirmar
-                    # Verifica se o botão de confirmação foi clicado
-                    if st.session_state.get("confirm_limpar_resultados_btn"):
+                     if st.session_state.get("confirm_limpar_resultados_btn"):
                          with st.spinner("Limpando resultados...\ Academia FIA Softworks"):
                              conn = get_db_connection()
                              if conn:
