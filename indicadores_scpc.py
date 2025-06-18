@@ -61,7 +61,7 @@ def create_tables_if_not_exists():
                     username TEXT PRIMARY KEY,
                     password_hash TEXT NOT NULL,
                     tipo TEXT NOT NULL,
-                    setor TEXT NOT NULL,
+                    setor JSONB NOT NULL,
                     nome_completo TEXT,
                     email TEXT,
                     data_criacao TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -84,7 +84,7 @@ def create_tables_if_not_exists():
                 # Inserir o usuário admin
                 cur.execute("""
                     INSERT INTO usuarios (username, password_hash, tipo, setor, nome_completo, email)
-                    VALUES (%s, %s, %s, %s, %s, %s);
+                    VALUES (%s, %s, %s, %s::jsonb, %s, %s);
                 """, (admin_username, admin_password_hash, "Administrador", "Todos", "Administrador do Sistema", "admin@example.com"))
                 
                 print(f"Usuário administrador padrão criado. Username: {admin_username}, Senha: {admin_password}")
@@ -242,13 +242,13 @@ def save_users(users_data):
                 if username in existing_users_in_db:
                     cur.execute("""
                         UPDATE usuarios
-                        SET password_hash = %s, tipo = %s, setor = %s, nome_completo = %s, email = %s
+                        SET password_hash = %s, tipo = %s, setor = %s::jsonb, nome_completo = %s, email = %s
                         WHERE username = %s;
                     """, (password_hash, tipo, setor, nome_completo, email, username))
                 else:
                     cur.execute("""
                         INSERT INTO usuarios (username, password_hash, tipo, setor, nome_completo, email)
-                        VALUES (%s, %s, %s, %s, %s, %s);
+                        VALUES (%s, %s, %s, %s::jsonb, %s, %s);
                     """, (username, password_hash, tipo, setor, nome_completo, email))
             
             users_to_delete = existing_users_in_db - set(users_data.keys())
@@ -1148,10 +1148,14 @@ def get_user_type(username):
     return "Visualizador"
 
 def get_user_sector(username):
-    """Obtém o setor do usuário."""
+    """Obtém os setores do usuário como lista."""
     users = load_users()
     if username in users:
-        return users[username].get("setor", "Todos")
+        setor_raw = users[username].get("setor", ["Todos"])
+        if isinstance(setor_raw, str):
+            return [setor_raw]
+        return setor_raw
+    return ["Todos"]sers[username].get("setor", "Todos")
     return "Todos"
 
 def create_indicator(SETORES, TIPOS_GRAFICOS):
@@ -1532,7 +1536,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
     user_name = st.session_state.get("username", "Usuário não identificado")
 
     if user_type == "Operador":
-        indicators = [ind for ind in indicators if ind["responsavel"] == user_sector]
+        indicators = [ind for ind in indicators if ind["responsavel"] in user_sector]
         if not indicators:
             st.info(f"Não há indicadores associados ao seu setor ({user_sector}).")
             st.markdown('</div>', unsafe_allow_html=True)
