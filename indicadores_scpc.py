@@ -1155,6 +1155,8 @@ def get_user_sector(username):
         if isinstance(setor_raw, str):
             return [setor_raw]
         return setor_raw
+    return ["Todos"]setor_raw]
+        return setor_raw
     return ["Todos"]sers[username].get("setor", "Todos")
     return "Todos"
 
