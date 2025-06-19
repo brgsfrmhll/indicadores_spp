@@ -3210,7 +3210,6 @@ def show_settings():
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# Função show_user_management sem DEBUG prints
 def show_user_management(SETORES):
     """Mostra a página de gerenciamento de usuários."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
@@ -3247,7 +3246,14 @@ def show_user_management(SETORES):
         # Input para selecionar MÚLTIPLOS setores (usando st.multiselect)
         # O setor "Todos" não faz sentido para Operadores. Admins e Visualizadores não precisam de setores específicos para ver tudo, mas o multiselect pode ser usado para representação ou futuros filtros.
         # Vamos oferecer todos os setores no multiselect.
-        user_sectors_new = st.multiselect("Setores", options=SETORES, default=[], help="Selecione os setores que este usuário poderá gerenciar ou visualizar (para Operadores) ou apenas para referência (para Administradores/Visualizadores).") # Seleção múltipla de setores
+        user_sectors_new = st.multiselect(
+            "Setor(es) Associado(s)",
+            options=SETORES,
+            default=[],
+            placeholder="Selecione os setores", # Alterado aqui
+            help="Selecione os setores que este usuário poderá gerenciar ou visualizar (para Operadores) ou apenas para referência (para Administradores/Visualizadores)."
+        )
+
         st.markdown("#### Informações de Acesso")
         col1, col2, col3 = st.columns(3)
         with col1: login = st.text_input("Login", placeholder="Digite o login para acesso ao sistema")
@@ -3290,7 +3296,7 @@ def show_user_management(SETORES):
                 "data_criacao": datetime.now().isoformat() # Data de criação
             }
 
-            # *** CORREÇÃO AQUI: Verificar o resultado de save_users ***
+            # Verificar o resultado de save_users
             if save_users(users): # Chama a função de salvamento e verifica se foi bem-sucedida
                 log_user_action("Usuário criado", login, st.session_state.username) # Log
                 st.success(f"✅ Usuário '{nome_completo}' (login: {login}) adicionado com sucesso como {user_type_new}!")
@@ -3451,6 +3457,7 @@ def show_user_management(SETORES):
                              "Setor(es) Associado(s)",
                              options=SETORES, # Oferece todos os setores
                              default=current_sectors, # Marca os setores atuais
+                             placeholder="Selecione os setores", # Alterado aqui
                              key=f"new_sectors_{login}" # Chave única
                         )
 
@@ -3499,7 +3506,7 @@ def show_user_management(SETORES):
 
                             users[login] = updated_user_data # Atualiza no dicionário principal
 
-                            # *** CORREÇÃO AQUI: Verificar o resultado de save_users ***
+                            # Verificar o resultado de save_users
                             if save_users(users): # Chama a função de salvamento e verifica
                                 st.success(f"✅ Usuário '{new_nome}' atualizado com sucesso!")
                                 log_user_action("Usuário atualizado", login, st.session_state.username) # Log
@@ -3533,7 +3540,7 @@ def show_user_management(SETORES):
                     with col1:
                         # Botão de confirmação da exclusão
                         if st.button("✅ Sim, excluir", key=f"confirm_del_{login}"):
-                            # *** CORREÇÃO AQUI: Chamar delete_user APENAS UMA VEZ ***
+                            # Chamar delete_user APENAS UMA VEZ
                             if delete_user(login, st.session_state.username): # Chama a função de exclusão e verifica
                                 st.success(f"✅ Usuário '{user_to_delete_name}' excluído com sucesso!")
                                 # Limpa o estado de exclusão e reroda
@@ -3593,7 +3600,6 @@ def show_user_management(SETORES):
             st.markdown(download_link, unsafe_allow_html=True) # Exibe o link de download
 
     st.markdown('</div>', unsafe_allow_html=True)
-
 
 def delete_user(username, user_performed):
     """Exclui um usuário do banco de dados."""
