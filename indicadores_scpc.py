@@ -3083,7 +3083,8 @@ def show_settings():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-# A função save_users existente (sem correções lógicas necessárias, mas mantida para contexto)
+
+# A função save_users - Sem alterações lógicas necessárias para este problema específico, mas incluída para completude
 def save_users(users_data):
     """
     Salva os usuários no banco de dados PostgreSQL.
@@ -3149,8 +3150,32 @@ def save_users(users_data):
             conn.close()
     return False
 
+# A função delete_user - Sem alterações lógicas necessárias, mas incluída para completude
+def delete_user(username, user_performed):
+    """Exclui um usuário do banco de dados."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            # A exclusão na tabela usuarios deve ser suficiente,
+            # pois a chave estrangeira em 'usuario_setores' tem ON DELETE CASCADE
+            cur.execute("DELETE FROM usuarios WHERE username = %s;", (username,))
+            conn.commit()
+            log_user_action("Usuário excluído", username, user_performed) # Log
+            # Recarrega a lista de usuários no estado da sessão após exclusão bem-sucedida
+            # Note: users = load_users() dentro show_user_management será chamado no próximo rerun
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao excluir usuário do banco de dados: {e}")
+            st.error(f"Erro ao excluir usuário: {e}") # Exibe erro no Streamlit
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False
 
-# A função show_user_management corrigida para verificar o resultado de save_users
+
 def show_user_management(SETORES):
     """Mostra a página de gerenciamento de usuários."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
@@ -3239,9 +3264,10 @@ def show_user_management(SETORES):
             else:
                 # Se save_users retornou False, significa que houve um erro no banco
                 st.error(f"❌ Erro ao salvar o usuário '{nome_completo}' no banco de dados. Verifique o console para detalhes do erro.")
-                # Remova o usuário do dicionário local para evitar exibi-lo na lista se não foi salvo no DB
-                if login in users:
-                    del users[login]
+                # O save_users já lida com o rollback e imprime o erro no console.
+                # Não precisamos remover do dicionário local aqui, pois a página será recarregada pelo rerun ou o usuário verá o erro.
+                # Se save_users falha, o dicionário 'users' no próximo load_users não terá o novo usuário.
+                pass # A mensagem de erro já foi exibida
 
 
     st.subheader("Usuários Cadastrados")
@@ -3361,7 +3387,7 @@ def show_user_management(SETORES):
                         st.rerun() # Reroda para mostrar o form
                 with col2:
                      # Botão de excluir - define estado para confirmar exclusão
-                    if st.button("��️ Excluir", key=f"del_{login}"):
+                    if st.button("🗑️ Excluir", key=f"del_{login}"):
                         st.session_state[f"deleting_{login}"] = True # Estado para exclusão deste usuário
                         st.rerun() # Reroda para mostrar a confirmação
 
@@ -3451,6 +3477,8 @@ def show_user_management(SETORES):
                             else:
                                 # Se save_users retornou False, significa que houve um erro no banco
                                 st.error(f"❌ Erro ao atualizar o usuário '{new_nome}' no banco de dados. Verifique o console para detalhes do erro.")
+                                # Não limpa o estado de edição para que o formulário persista com os valores (ou remova se preferir que limpe)
+                                pass
 
 
                         # Lógica ao clicar em Cancelar Edição
@@ -3470,9 +3498,7 @@ def show_user_management(SETORES):
                     with col1:
                         # Botão de confirmação da exclusão
                         if st.button("✅ Sim, excluir", key=f"confirm_del_{login}"):
-                            # Chama a função para deletar o usuário no DB
-                            delete_user(login, st.session_state.username)
-                            # *** CORREÇÃO AQUI: Verificar o resultado de delete_user ***
+                            # *** CORREÇÃO AQUI: Chamar delete_user APENAS UMA VEZ ***
                             if delete_user(login, st.session_state.username): # Chama a função de exclusão e verifica
                                 st.success(f"✅ Usuário '{user_to_delete_name}' excluído com sucesso!")
                                 # Limpa o estado de exclusão e reroda
@@ -3482,8 +3508,10 @@ def show_user_management(SETORES):
                             else:
                                 # Se delete_user retornou False
                                 st.error(f"❌ Erro ao excluir o usuário '{user_to_delete_name}' do banco de dados. Verifique o console para detalhes do erro.")
-                                # Não limpa o estado de exclusão para que a mensagem persista
-                                del st.session_state[f"deleting_{login}"] # Vamos limpar o estado para não ficar preso, mas o erro já foi exibido
+                                # Limpa o estado de exclusão para não ficar preso na confirmação
+                                del st.session_state[f"deleting_{login}"]
+                                # Não reroda automaticamente aqui para permitir que o usuário veja a mensagem de erro
+                                pass # Deixa a mensagem de erro visível
 
                     with col2:
                          # Botão de cancelar a exclusão
@@ -3530,32 +3558,6 @@ def show_user_management(SETORES):
             st.markdown(download_link, unsafe_allow_html=True) # Exibe o link de download
 
     st.markdown('</div>', unsafe_allow_html=True)
-
-def delete_user(username, user_performed):
-    """Exclui um usuário do banco de dados."""
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor()
-            # A exclusão na tabela usuarios deve ser suficiente,
-            # pois a chave estrangeira em 'usuario_setores' tem ON DELETE CASCADE
-            cur.execute("DELETE FROM usuarios WHERE username = %s;", (username,))
-            conn.commit()
-            log_user_action("Usuário excluído", username, user_performed) # Log
-            # Recarrega a lista de usuários no estado da sessão após exclusão bem-sucedida
-            # Note: users = load_users() dentro show_user_management será chamado no próximo rerun
-            return True
-        except psycopg2.Error as e:
-            print(f"Erro ao excluir usuário do banco de dados: {e}")
-            st.error(f"Erro ao excluir usuário: {e}") # Exibe erro no Streamlit
-            conn.rollback()
-            return False
-        finally:
-            cur.close()
-            conn.close()
-    return False
-
-
 def logout():
     """Realiza o logout do usuário."""
     # Limpa todo o estado da sessão
