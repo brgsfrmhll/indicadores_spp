@@ -2355,6 +2355,25 @@ def get_analise_status(analise_dict):
     else: return f"⚠️ Preenchida parcialmente ({campos_preenchidos}/{total_campos})"
 
 
+def calculate_status(result, meta, comparacao):
+    """Calcula o status do resultado ('Acima da Meta', 'Abaixo da Meta', 'N/A')."""
+    try:
+        # Tenta converter resultado e meta para float. Se falhar, não é numérico.
+        result_float = float(result)
+        meta_float = float(meta if meta is not None else 0.0) # Meta padrão para 0.0 se None
+
+        if comparacao == "Maior é melhor":
+            return "Acima da Meta" if result_float >= meta_float else "Abaixo da Meta"
+        elif comparacao == "Menor é melhor":
+            return "Acima da Meta" if result_float <= meta_float else "Abaixo da Meta"
+        else:
+            # Não deve acontecer com as opções atuais, mas como fallback seguro
+            return "N/A"
+    except (ValueError, TypeError):
+        # Se a conversão de resultado ou meta falhar, o status é N/A
+        return "N/A"
+
+
 def show_dashboard(SETORES, TEMA_PADRAO):
     """Mostra o dashboard de indicadores."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
@@ -2443,18 +2462,12 @@ def show_dashboard(SETORES, TEMA_PADRAO):
             last_result = last_result_obj["resultado"]
             meta = float(ind.get("meta", 0.0)) # Garante que a meta é float
 
-            try:
-                last_result_float = float(last_result) # Tenta converter resultado para float
+            # Usa a nova função para calcular o status do último resultado
+            status_meta = calculate_status(last_result, meta, ind.get("comparacao", "Maior é melhor"))
 
-                if ind["comparacao"] == "Maior é melhor": status_meta = "Acima da Meta" if last_result_float >= meta else "Abaixo da Meta"
-                else: status_meta = "Acima da Meta" if last_result_float <= meta else "Abaixo da Meta"
-
-                if status_meta == "Acima da Meta": indicators_above_target += 1
-                else: indicators_below_target += 1
-
-            except (TypeError, ValueError):
-                 # Se o resultado não é numérico, conta como N/A para status de meta
-                 indicators_na_status += 1
+            if status_meta == "Acima da Meta": indicators_above_target += 1
+            elif status_meta == "Abaixo da Meta": indicators_below_target += 1
+            elif status_meta == "N/A": indicators_na_status += 1 # Conta resultados N/A para o resumo
 
 
     # Exibe os cartões de resumo
@@ -2505,13 +2518,13 @@ def show_dashboard(SETORES, TEMA_PADRAO):
             last_result = last_result_obj["resultado"]
             last_date = last_result_obj["data_referencia"]
 
+            # Usa a nova função para calcular o status do último resultado
+            status = calculate_status(last_result, ind.get("meta"), ind.get("comparacao", "Maior é melhor"))
+
             try:
-                # Calcula status e variação se o último resultado for numérico
+                # Calcula variação se o último resultado for numérico
                 meta = float(ind.get("meta", 0.0)) # Garante que a meta é float
                 last_result_float = float(last_result) # Tenta converter resultado para float
-
-                if ind["comparacao"] == "Maior é melhor": status = "Acima da Meta" if last_result_float >= meta else "Abaixo da Meta"
-                else: status = "Acima da Meta" if last_result_float <= meta else "Abaixo da Meta"
 
                 if meta != 0:
                     variacao = ((last_result_float / meta) - 1) * 100
@@ -2524,10 +2537,10 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                     else: variacao = 0 # Zero se resultado e meta são zero
 
             except (TypeError, ValueError):
-                 # Se o resultado não é numérico, o status de meta é N/A
-                 status = "N/A"
+                 # Se o resultado não é numérico, a variação é 0 ou N/A
                  variacao = 0 # Reseta variação numérica
                  last_result_float = None # Reseta resultado float
+
 
             # Formata a data do último resultado
             data_formatada = format_date_as_month_year(last_date)
@@ -2538,7 +2551,7 @@ def show_dashboard(SETORES, TEMA_PADRAO):
             "last_result": last_result,
             "last_result_float": last_result_float, # Armazena o float para análise automática
             "data_formatada": data_formatada,
-            "status": status,
+            "status": status, # Status calculado pela nova função
             "variacao": variacao, # Mantém o valor numérico (pode ser inf)
             "results": ind_results # Inclui todos os resultados para exibir o histórico
         })
@@ -2601,13 +2614,11 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                     df_hist["data_referencia"] = pd.to_datetime(df_hist["data_referencia"])
                     df_hist = df_hist.sort_values("data_referencia", ascending=False)
 
-                    # Calcula o status para cada resultado na série histórica
-                    # Tenta converter resultado e meta para float, lida com erros resultando em N/A status
+                    # Calcula o status para cada resultado na série histórica usando a nova função
                     df_hist["status"] = df_hist.apply(lambda row:
-                         "Acima da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float)) and ((float(row["resultado"]) >= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Maior é melhor") or (float(row["resultado"]) <= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Menor é melhor"))))
-                         else "Abaixo da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float))))
-                         else "N/A" # Status N/A se resultado ou meta não são numéricos
-                    , axis=1)
+                         calculate_status(row["resultado"], ind.get("meta"), ind.get("comparacao", "Maior é melhor")),
+                         axis=1
+                    )
 
 
                     # Seleciona e formata colunas para exibição na tabela
@@ -2742,7 +2753,7 @@ Esta metodologia ajuda a garantir que todos os aspectos importantes sejam consid
 
 
     # Botão de exportar todos os indicadores exibidos
-    if st.button("📤 Exportar Tudo", key="dashboard_export_button"):
+    if st.button("�� Exportar Tudo", key="dashboard_export_button"):
         export_data = []
         for data in indicator_data:
             ind = data["indicator"]
@@ -2774,7 +2785,6 @@ Esta metodologia ajuda a garantir que todos os aspectos importantes sejam consid
         st.markdown(download_link, unsafe_allow_html=True) # Exibe o link de download
 
     st.markdown('</div>', unsafe_allow_html=True)
-
 
 def show_overview():
     """Mostra a visão geral dos indicadores."""
