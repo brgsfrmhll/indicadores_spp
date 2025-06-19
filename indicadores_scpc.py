@@ -3275,12 +3275,12 @@ def show_user_management(SETORES):
         # Input para selecionar MÚLTIPLOS setores (usando st.multiselect)
         # O setor "Todos" não faz sentido para Operadores. Admins e Visualizadores não precisam de setores específicos para ver tudo, mas o multiselect pode ser usado para representação ou futuros filtros.
         # Vamos oferecer todos os setores no multiselect.
-        user_sectors_new = st.multiselect("Setor(es) Associado(s)", options=SETORES, default=[], help="Selecione os setores que este usuário poderá gerenciar ou visualizar (para Operadores) ou apenas para referência (para Administradores/Visualizadores).") # Seleção múltipla de setores
+        user_sectors_new = st.multiselect("Setores", options=SETORES, default=[Ala A], help="Selecione os setores que este usuário poderá gerenciar ou visualizar (para Operadores) ou apenas para referência (para Administradores/Visualizadores).") # Seleção múltipla de setores
         st.markdown("#### Informações de Acesso")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1: login = st.text_input("Login", placeholder="Digite o login para acesso ao sistema")
         with col2: new_password = st.text_input("Senha", type="password", placeholder="Digite a senha")
-        confirm_password = st.text_input("Confirmar Senha", type="password", placeholder="Confirme a senha")
+        with col3: confirm_password = st.text_input("Confirmar Senha", type="password", placeholder="Confirme a senha")
 
         # Explicação dos tipos de usuário
         st.markdown("""<div style="background-color:#f8f9fa; padding:10px; border-radius:5px; margin-top:10px;"><p style="margin:0; font-size:14px;"><strong>Tipos de usuário:</strong></p><ul style="margin:5px 0 0 15px; padding:0; font-size:13px;"><li><strong>Administrador:</strong> Acesso total ao sistema. Associações de setor são apenas para referência.</li><li><strong>Operador:</strong> Gerencia e preenche indicadores de **seus setores associados**. Deve ter pelo menos um setor associado.</li><li><strong>Visualizador:</strong> Apenas visualiza indicadores e resultados. Associações de setor são apenas para referência/futuros filtros.</li></ul></div>""", unsafe_allow_html=True)
