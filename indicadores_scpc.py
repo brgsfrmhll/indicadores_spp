@@ -250,71 +250,6 @@ def load_users():
             conn.close()
     return {}
 
-def save_users(users_data):
-    """
-    Salva os usuários no banco de dados PostgreSQL.
-    Esta função sincroniza o dicionário 'users_data' com as tabelas 'usuarios' e 'usuario_setores'.
-    Ela insere novos usuários, atualiza os existentes e remove os que não estão mais na lista,
-    gerenciando as associações de setores na tabela usuario_setores.
-    """
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor()
-
-            # Obter usuários existentes no DB
-            cur.execute("SELECT username FROM usuarios;")
-            existing_users_in_db = {row[0] for row in cur.fetchall()}
-
-            current_users_to_save = set(users_data.keys())
-
-            for username, data in users_data.items():
-                password_hash = data.get("password", "")
-                tipo = data.get("tipo", "Visualizador")
-                nome_completo = data.get("nome_completo", "")
-                email = data.get("email", "")
-                setores = data.get("setores", []) # Lista de setores
-
-                # Inserir ou atualizar usuário na tabela usuarios
-                if username in existing_users_in_db:
-                    cur.execute("""
-                        UPDATE usuarios
-                        SET password_hash = %s, tipo = %s, nome_completo = %s, email = %s
-                        WHERE username = %s;
-                    """, (password_hash, tipo, nome_completo, email, username))
-                else:
-                    cur.execute("""
-                        INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email)
-                        VALUES (%s, %s, %s, %s, %s);
-                    """, (username, password_hash, tipo, nome_completo, email))
-
-                # Gerenciar setores na tabela usuario_setores
-                # 1. Deletar setores existentes para este usuário
-                cur.execute("DELETE FROM usuario_setores WHERE username = %s;", (username,))
-                # 2. Inserir os novos setores
-                if setores: # Somente insere se a lista de setores não for vazia
-                    sector_records = [(username, setor) for setor in setores]
-                    sql_insert_sectors = "INSERT INTO usuario_setores (username, setor) VALUES (%s, %s);"
-                    cur.executemany(sql_insert_sectors, sector_records)
-
-            # Deletar usuários que existem no DB mas não na lista de salvamento
-            users_to_delete = existing_users_in_db - current_users_to_save
-            for username_to_delete in users_to_delete:
-                 # O ON DELETE CASCADE na chave estrangeira de usuario_setores garantirá que as entradas de setor sejam deletadas primeiro
-                cur.execute("DELETE FROM usuarios WHERE username = %s;", (username_to_delete,))
-                print(f"Usuário '{username_to_delete}' removido do banco de dados.")
-
-            conn.commit()
-            return True
-        except psycopg2.Error as e:
-            print(f"Erro ao salvar usuários no banco de dados: {e}")
-            conn.rollback()
-            return False
-        finally:
-            cur.close()
-            conn.close()
-    return False
-
 # Indicadores (Mantidas, pois a associação de setor do indicador não muda)
 def load_indicators():
     """
@@ -3147,7 +3082,74 @@ def show_settings():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
+# A função save_users existente (sem correções lógicas necessárias, mas mantida para contexto)
+def save_users(users_data):
+    """
+    Salva os usuários no banco de dados PostgreSQL.
+    Esta função sincroniza o dicionário 'users_data' com as tabelas 'usuarios' e 'usuario_setores'.
+    Ela insere novos usuários, atualiza os existentes e remove os que não estão mais na lista,
+    gerenciando as associações de setores na tabela usuario_setores.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
 
+            # Obter usuários existentes no DB
+            cur.execute("SELECT username FROM usuarios;")
+            existing_users_in_db = {row[0] for row in cur.fetchall()}
+
+            current_users_to_save = set(users_data.keys())
+
+            for username, data in users_data.items():
+                password_hash = data.get("password", "")
+                tipo = data.get("tipo", "Visualizador")
+                nome_completo = data.get("nome_completo", "")
+                email = data.get("email", "")
+                setores = data.get("setores", []) # Lista de setores
+
+                # Inserir ou atualizar usuário na tabela usuarios
+                if username in existing_users_in_db:
+                    cur.execute("""
+                        UPDATE usuarios
+                        SET password_hash = %s, tipo = %s, nome_completo = %s, email = %s
+                        WHERE username = %s;
+                    """, (password_hash, tipo, nome_completo, email, username))
+                else:
+                    cur.execute("""
+                        INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email)
+                        VALUES (%s, %s, %s, %s, %s);
+                    """, (username, password_hash, tipo, nome_completo, email))
+
+                # Gerenciar setores na tabela usuario_setores
+                # 1. Deletar setores existentes para este usuário
+                cur.execute("DELETE FROM usuario_setores WHERE username = %s;", (username,))
+                # 2. Inserir os novos setores
+                if setores: # Somente insere se a lista de setores não for vazia
+                    sector_records = [(username, setor) for setor in setores]
+                    sql_insert_sectors = "INSERT INTO usuario_setores (username, setor) VALUES (%s, %s);"
+                    cur.executemany(sql_insert_sectors, sector_records)
+
+            # Deletar usuários que existem no DB mas não na lista de salvamento
+            users_to_delete = existing_users_in_db - current_users_to_save
+            for username_to_delete in users_to_delete:
+                 # O ON DELETE CASCADE na chave estrangeira de usuario_setores garantirá que as entradas de setor sejam deletadas primeiro
+                cur.execute("DELETE FROM usuarios WHERE username = %s;", (username_to_delete,))
+                print(f"Usuário '{username_to_delete}' removido do banco de dados.")
+
+            conn.commit()
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao salvar usuários no banco de dados: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cur.close()
+            conn.close()
+    return False
+
+
+# A função show_user_management corrigida para verificar o resultado de save_users
 def show_user_management(SETORES):
     """Mostra a página de gerenciamento de usuários."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
@@ -3226,12 +3228,20 @@ def show_user_management(SETORES):
                 "setores": user_sectors_new, # Salva a lista de setores
                 "data_criacao": datetime.now().isoformat() # Data de criação
             }
-            save_users(users) # Salva o dicionário atualizado no DB
-            log_user_action("Usuário criado", login, st.session_state.username) # Log
 
-            st.success(f"✅ Usuário '{nome_completo}' (login: {login}) adicionado com sucesso como {user_type_new}!")
-            time.sleep(1) # Pequeno delay
-            st.rerun() # Reinicia a aplicação para atualizar a lista de usuários exibida
+            # *** CORREÇÃO AQUI: Verificar o resultado de save_users ***
+            if save_users(users): # Chama a função de salvamento e verifica se foi bem-sucedida
+                log_user_action("Usuário criado", login, st.session_state.username) # Log
+                st.success(f"✅ Usuário '{nome_completo}' (login: {login}) adicionado com sucesso como {user_type_new}!")
+                time.sleep(1) # Pequeno delay
+                st.rerun() # Reinicia a aplicação para atualizar a lista de usuários exibida
+            else:
+                # Se save_users retornou False, significa que houve um erro no banco
+                st.error(f"❌ Erro ao salvar o usuário '{nome_completo}' no banco de dados. Verifique o console para detalhes do erro.")
+                # Remova o usuário do dicionário local para evitar exibi-lo na lista se não foi salvo no DB
+                if login in users:
+                    del users[login]
+
 
     st.subheader("Usuários Cadastrados")
     # Filtros para a lista de usuários
@@ -3350,7 +3360,7 @@ def show_user_management(SETORES):
                         st.rerun() # Reroda para mostrar o form
                 with col2:
                      # Botão de excluir - define estado para confirmar exclusão
-                    if st.button("🗑️ Excluir", key=f"del_{login}"):
+                    if st.button("��️ Excluir", key=f"del_{login}"):
                         st.session_state[f"deleting_{login}"] = True # Estado para exclusão deste usuário
                         st.rerun() # Reroda para mostrar a confirmação
 
@@ -3427,15 +3437,20 @@ def show_user_management(SETORES):
 
                             users[login] = updated_user_data # Atualiza no dicionário principal
 
-                            save_users(users) # Salva no DB (irá gerenciar a tabela usuario_setores)
-                            st.success(f"✅ Usuário '{new_nome}' atualizado com sucesso!")
-                            log_user_action("Usuário atualizado", login, st.session_state.username) # Log
+                            # *** CORREÇÃO AQUI: Verificar o resultado de save_users ***
+                            if save_users(users): # Chama a função de salvamento e verifica
+                                st.success(f"✅ Usuário '{new_nome}' atualizado com sucesso!")
+                                log_user_action("Usuário atualizado", login, st.session_state.username) # Log
 
-                            # Limpa os estados de edição e reroda
-                            del st.session_state[f"editing_{login}"]
-                            if f"edit_user_data_{login}" in st.session_state: del st.session_state[f"edit_user_data_{login}"]
-                            time.sleep(1)
-                            st.rerun()
+                                # Limpa os estados de edição e reroda
+                                del st.session_state[f"editing_{login}"]
+                                if f"edit_user_data_{login}" in st.session_state: del st.session_state[f"edit_user_data_{login}"]
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                # Se save_users retornou False, significa que houve um erro no banco
+                                st.error(f"❌ Erro ao atualizar o usuário '{new_nome}' no banco de dados. Verifique o console para detalhes do erro.")
+
 
                         # Lógica ao clicar em Cancelar Edição
                         if cancel_edit:
@@ -3456,11 +3471,19 @@ def show_user_management(SETORES):
                         if st.button("✅ Sim, excluir", key=f"confirm_del_{login}"):
                             # Chama a função para deletar o usuário no DB
                             delete_user(login, st.session_state.username)
-                            st.success(f"✅ Usuário '{user_to_delete_name}' excluído com sucesso!")
-                            # Limpa o estado de exclusão e reroda
-                            del st.session_state[f"deleting_{login}"]
-                            time.sleep(1)
-                            st.rerun()
+                            # *** CORREÇÃO AQUI: Verificar o resultado de delete_user ***
+                            if delete_user(login, st.session_state.username): # Chama a função de exclusão e verifica
+                                st.success(f"✅ Usuário '{user_to_delete_name}' excluído com sucesso!")
+                                # Limpa o estado de exclusão e reroda
+                                del st.session_state[f"deleting_{login}"]
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                # Se delete_user retornou False
+                                st.error(f"❌ Erro ao excluir o usuário '{user_to_delete_name}' do banco de dados. Verifique o console para detalhes do erro.")
+                                # Não limpa o estado de exclusão para que a mensagem persista
+                                del st.session_state[f"deleting_{login}"] # Vamos limpar o estado para não ficar preso, mas o erro já foi exibido
+
                     with col2:
                          # Botão de cancelar a exclusão
                         if st.button("❌ Cancelar", key=f"cancel_del_{login}"):
@@ -3477,7 +3500,7 @@ def show_user_management(SETORES):
 
     # Botão para exportar a lista de usuários (apenas para admin)
     if st.session_state.username == "admin":
-        if st.button("�� Exportar Lista", key="users_export_button"):
+        if st.button("📤 Exportar Lista", key="users_export_button"):
             export_data = []
             for user, data in users.items():
                 user_type = data.get("tipo", "Visualizador")
