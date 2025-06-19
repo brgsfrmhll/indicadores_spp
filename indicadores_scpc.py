@@ -2409,6 +2409,25 @@ def get_analise_status(analise_dict):
     elif campos_preenchidos == total_campos: return "✅ Preenchida completamente"
     else: return f"⚠️ Preenchida parcialmente ({campos_preenchidos}/{total_campos})"
 
+def calculate_status(result, meta, comparacao):
+    """Calcula o status do resultado ('Acima da Meta', 'Abaixo da Meta', 'N/A')."""
+    try:
+        # Tenta converter resultado e meta para float. Se falhar, não é numérico.
+        # Trata meta None como 0.0 para comparações numéricas
+        result_float = float(result)
+        meta_float = float(meta if meta is not None else 0.0)
+
+        if comparacao == "Maior é melhor":
+            return "Acima da Meta" if result_float >= meta_float else "Abaixo da Meta"
+        elif comparacao == "Menor é melhor":
+            return "Acima da Meta" if result_float <= meta_float else "Abaixo da Meta"
+        else:
+            # Não deve acontecer com as opções atuais, mas como fallback seguro
+            return "N/A"
+    except (ValueError, TypeError):
+        # Se a conversão de resultado ou meta falhar, o status é N/A
+        return "N/A"
+
 
 def show_dashboard(SETORES, TEMA_PADRAO):
     """Mostra o dashboard de indicadores."""
