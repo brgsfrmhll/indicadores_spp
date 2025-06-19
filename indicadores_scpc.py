@@ -3330,7 +3330,7 @@ def show_user_management(SETORES):
                         <p style="margin:5px 0 0 0; color:#546E7A;">Login: <strong>{login}</strong></p>
                         <p style="margin:3px 0 0 0; color:#546E7A;">Email: {email}</p>
                         <p style="margin:3px 0 0 0; color:#546E7A;">Criado em: {row['Criado em']}</p>
-                         <p style="margin:3px 0 0 0; color:#546E7A;">Setores: {sectors_display}</p> {/* Exibe os setores associados */}
+                         <p style="margin:3px 0 0 0; color:#546E7A;">Setores: {sectors_display}</p>
                     </div>
                     <div>
                         <span style="background-color:{type_color}; color:white; padding:5px 10px; border-radius:15px; font-size:12px;">{user_type}</span>
@@ -3477,7 +3477,7 @@ def show_user_management(SETORES):
 
     # Botão para exportar a lista de usuários (apenas para admin)
     if st.session_state.username == "admin":
-        if st.button("📤 Exportar Lista", key="users_export_button"):
+        if st.button("�� Exportar Lista", key="users_export_button"):
             export_data = []
             for user, data in users.items():
                 user_type = data.get("tipo", "Visualizador")
@@ -3501,11 +3501,11 @@ def show_user_management(SETORES):
                 })
             # Cria DataFrame e gera link de download
             df_export = pd.DataFrame(export_data)
+            df_export.rename(columns={'Variação': 'Variação (%)'}, inplace=True) # Renomeia a coluna de variação
             download_link = get_download_link(df_export, "usuarios_sistema.xlsx")
-            st.markdown(download_link, unsafe_allow_html=True)
+            st.markdown(download_link, unsafe_allow_html=True) # Exibe o link de download
 
     st.markdown('</div>', unsafe_allow_html=True)
-
 
 def delete_user(username, user_performed):
     """Exclui um usuário do banco de dados."""
