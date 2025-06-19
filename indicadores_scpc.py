@@ -1686,7 +1686,7 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
             col1, col2, col3 = st.columns([1, 3, 1])
             # Ajuste o alinhamento do botão Salvar
             st.markdown("""<style>[data-testid="stForm"] div:nth-child(3) > div:first-child { text-align: right; }</style>""", unsafe_allow_html=True)
-            with col1: submit = st.form_submit_button("�� Salvar")
+            with col1: submit = st.form_submit_button("✔️ Salvar")
             with col3: delete_button_clicked = st.form_submit_button("️ Excluir", type="secondary")
 
 
