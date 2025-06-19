@@ -1562,7 +1562,6 @@ def create_indicator(SETORES, TIPOS_GRAFICOS):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-
 def edit_indicator(SETORES, TIPOS_GRAFICOS):
     """Mostra a página de edição de indicador com fórmula dinâmica."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
@@ -1687,7 +1686,7 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
             col1, col2, col3 = st.columns([1, 3, 1])
             # Ajuste o alinhamento do botão Salvar
             st.markdown("""<style>[data-testid="stForm"] div:nth-child(3) > div:first-child { text-align: right; }</style>""", unsafe_allow_html=True)
-            with col1: submit = st.form_submit_button("💾 Salvar")
+            with col1: submit = st.form_submit_button("�� Salvar")
             with col3: delete_button_clicked = st.form_submit_button("️ Excluir", type="secondary")
 
 
@@ -1790,6 +1789,12 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
                  st.session_state.current_var_descriptions = {}
                  st.session_state.current_variable_values = {}
                  if 'current_test_result' in st.session_state: del st.session_state.current_test_result
+
+                 # --- CORREÇÃO APLICADA AQUI ---
+                 # Recarrega a lista de indicadores no estado da sessão após exclusão bem-sucedida
+                 st.session_state["indicators"] = load_indicators()
+                 # --- FIM DA CORREÇÃO ---
+
                  scroll_to_top()
                  st.rerun() # Reinicia a aplicação
             else:
@@ -1797,10 +1802,6 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
                  # Não limpa o estado de exclusão para permitir nova tentativa ou cancelar
                  st.session_state[delete_state_key] = None # Limpa o estado de confirmação para não ficar preso
                  pass
-
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
 def delete_indicator(indicator_id, user_performed):
     """Exclui um indicador e seus resultados associados do banco de dados."""
     conn = get_db_connection()
@@ -1813,6 +1814,8 @@ def delete_indicator(indicator_id, user_performed):
             cur.execute("DELETE FROM indicadores WHERE id = %s;", (indicator_id,))
             conn.commit()
             log_indicator_action("Indicador excluído", indicator_id, user_performed) # Log
+            # Recarrega a lista de usuários no estado da sessão após exclusão bem-sucedida
+            # Note: users = load_users() dentro show_user_management será chamado no próximo rerun
             return True
         except psycopg2.Error as e:
             print(f"Erro ao excluir indicador do banco de dados: {e}") # Mantém este print
@@ -1829,26 +1832,7 @@ def delete_indicator(indicator_id, user_performed):
             if conn is not None: conn.close()
     return False
 
-# Esta função auxiliar calcula o status (Acima/Abaixo/N/A) para um único resultado
-def calculate_status(result, meta, comparacao):
-    """Calcula o status do resultado ('Acima da Meta', 'Abaixo da Meta', 'N/A')."""
-    try:
-        # Tenta converter resultado e meta para float. Se falhar, não é numérico.
-        # Trata meta None como 0.0 para comparações numéricas
-        result_float = float(result)
-        meta_float = float(meta if meta is not None else 0.0)
-
-        if comparacao == "Maior é melhor":
-            return "Acima da Meta" if result_float >= meta_float else "Abaixo da Meta"
-        elif comparacao == "Menor é melhor":
-            return "Acima da Meta" if result_float <= meta_float else "Abaixo da Meta"
-        else:
-            # Não deve acontecer com as opções atuais, mas como fallback seguro
-            return "N/A"
-    except (ValueError, TypeError):
-        # Se a conversão de resultado ou meta falhar, o status é N/A
-        return "N/A"
-
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def fill_indicator(SETORES, TEMA_PADRAO):
     """Mostra a página de preenchimento de indicador com calculadora dinâmica."""
