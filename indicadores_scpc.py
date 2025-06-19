@@ -3212,7 +3212,6 @@ def show_settings():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-
 def show_user_management(SETORES):
     """Mostra a página de gerenciamento de usuários."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
@@ -3411,7 +3410,7 @@ def show_user_management(SETORES):
                         <p style="margin:5px 0 0 0; color:#546E7A;">Login: <strong>{login}</strong></p>
                         <p style="margin:3px 0 0 0; color:#546E7A;">Email: {email}</p>
                         <p style="margin:3px 0 0 0; color:#546E7A;">Criado em: {row['Criado em']}</p>
-                         <p style="margin:3px 0 0 0; color:#546E7A;">Setores: {sectors_display}</p>
+                        <p style="margin:3px 0 0 0; color:#546E7A;">Setores: {sectors_display}</p>
                     </div>
                     <div>
                         <span style="background-color:{type_color}; color:white; padding:5px 10px; border-radius:15px; font-size:12px;">{user_type}</span>
@@ -3422,6 +3421,10 @@ def show_user_management(SETORES):
 
             # Botões de Editar e Excluir (não aparecem para o próprio usuário nem para o admin 'admin')
             if not is_admin and not is_current:
+                # Cria um div wrapper para centralizar os botões
+                st.markdown('<div class="centered-buttons-container">', unsafe_allow_html=True)
+
+                # Usa colunas dentro do div wrapper para posicionar lado a lado
                 col1, col2 = st.columns(2)
                 with col1:
                     # Botão de editar - define estado para mostrar o formulário de edição
@@ -3435,13 +3438,15 @@ def show_user_management(SETORES):
                         st.session_state[f"deleting_{login}"] = True # Estado para exclusão deste usuário
                         st.rerun() # Reroda para mostrar a confirmação
 
+                # Fecha o div wrapper
+                st.markdown('</div>', unsafe_allow_html=True)
+
 
                 # Formulário de Edição (mostra se o estado de edição for True para este usuário)
                 if st.session_state.get(f"editing_{login}", False):
                     # Recupera os dados do usuário a ser editado do estado da sessão
                     user_to_edit = st.session_state.get(f"edit_user_data_{login}", {})
                     current_sectors = user_to_edit.get("setores", []) # Setores atuais do usuário
-
                     with st.form(key=f"edit_form_{login}"): # Chave única para o formulário
                         st.subheader(f"Editar Usuário: {user_to_edit.get('nome_completo', login)}")
                         st.markdown("#### Informações Pessoais")
