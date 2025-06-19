@@ -3082,7 +3082,6 @@ def show_settings():
                          st.rerun() # Reroda para atualizar a UI
 
     st.markdown('</div>', unsafe_allow_html=True)
-
 def save_users(users_data):
     print("DEBUG: [save_users] Iniciando função save_users.") # DEBUG 1
     conn = get_db_connection()
@@ -3093,12 +3092,14 @@ def save_users(users_data):
             cur = conn.cursor()
             print("DEBUG: [save_users] Cursor do DB obtido.") # DEBUG 3
 
-            # Desabilita temporariamente as verificações de chave estrangeira para facilitar a limpeza
-            print("DEBUG: [save_users] Desabilitando verificações de chave estrangeira.") # DEBUG 4
-            cur.execute("SET session_replication_role = 'replica';")
+            # As linhas abaixo foram removidas pois o usuário 'streamlit' não tem permissão para SET session_replication_role
+            # e não são estritamente necessárias graças ao ON DELETE CASCADE na FK de usuario_setores.
+            # print("DEBUG: [save_users] Desabilitando verificações de chave estrangeira.") # DEBUG 4 - Removido
+            # cur.execute("SET session_replication_role = 'replica';") # Removido
 
             # Limpa as tabelas de usuários e setores ANTES de inserir os dados restaurados
-            # Limpa primeiro a tabela de setores que depende da tabela de usuários
+            # A exclusão de 'usuarios' com ON DELETE CASCADE em 'usuario_setores' já limpa as entradas relacionadas.
+            # Mas deletar usuario_setores explicitamente primeiro é uma camada extra de segurança.
             print("DEBUG: [save_users] Limpando tabela usuario_setores.") # DEBUG 5
             cur.execute("DELETE FROM usuario_setores;")
             print("DEBUG: [save_users] Tabela usuario_setores limpa.") # DEBUG 6
@@ -3107,9 +3108,9 @@ def save_users(users_data):
             cur.execute("DELETE FROM usuarios;")
             print("DEBUG: [save_users] Tabela usuarios limpa.") # DEBUG 8
 
-            # Habilita novamente as verificações de chave estrangeira
-            print("DEBUG: [save_users] Reabilitando verificações de chave estrangeira.") # DEBUG 9
-            cur.execute("SET session_replication_role = 'origin';")
+            # A linha abaixo foi removida
+            # print("DEBUG: [save_users] Reabilitando verificações de chave estrangeira.") # DEBUG 9 - Removido
+            # cur.execute("SET session_replication_role = 'origin';") # Removido
 
             # Prepara listas para inserção em massa
             user_records = []
@@ -3212,6 +3213,7 @@ def save_users(users_data):
     else:
         print("DEBUG: [save_users] ERRO CONEXAO: Nao foi possivel obter conexao com o banco de dados para salvar usuarios. Retornando False.") # DEBUG E3 (Connection Error)
         return False
+
 def delete_user(username, user_performed):
     """Exclui um usuário do banco de dados."""
     conn = get_db_connection()
