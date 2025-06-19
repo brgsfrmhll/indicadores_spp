@@ -56,17 +56,14 @@ def create_tables_if_not_exists():
         try:
             cur = conn.cursor()
 
-            # 1. Tabela: usuarios (Removendo a coluna 'setor')
-            # Nota: Em uma migração real de DB, você precisaria dropar a coluna 'setor'
-            # e talvez migrar dados existentes para a nova tabela usuario_setores.
-            # Aqui, apenas garantimos que a tabela exista e adicionamos a nova.
+            # 1. Tabela: usuarios (Removendo a coluna 'setor' na definição, a remoção física deve ser feita via ALTER TABLE)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS usuarios (
                     username TEXT PRIMARY KEY,
                     password_hash TEXT NOT NULL,
                     tipo TEXT NOT NULL, -- 'Administrador', 'Operador', 'Visualizador'
-                    nome_completo TEXT,
-                    email TEXT,
+                    nome_completo TEXT, -- Permite NULL
+                    email TEXT, -- Permite NULL
                     data_criacao TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -217,17 +214,19 @@ def load_users():
             cur = conn.cursor()
             # Carregar dados básicos dos usuários
             cur.execute("""
-                SELECT username, password_hash, tipo, nome_completo, email
+                SELECT username, password_hash, tipo, nome_completo, email, data_criacao
                 FROM usuarios;
             """)
             rows = cur.fetchall()
             for row in rows:
-                username, password_hash, tipo, nome_completo, email = row
+                # Incluindo data_criacao no fetch
+                username, password_hash, tipo, nome_completo, email, data_criacao = row
                 users[username] = {
                     "password": password_hash,
                     "tipo": tipo,
-                    "nome_completo": nome_completo,
-                    "email": email,
+                    "nome_completo": nome_completo if nome_completo is not None else "", # Garante string vazia em vez de None
+                    "email": email if email is not None else "", # Garante string vazia em vez de None
+                    "data_criacao": data_criacao.isoformat() if data_criacao else "", # Salva data_criacao
                     "setores": [] # Inicializa com lista vazia
                 }
 
@@ -249,6 +248,103 @@ def load_users():
             cur.close()
             conn.close()
     return {}
+
+
+# Função save_users corrigida e sem DEBUG prints
+def save_users(users_data):
+    """
+    Salva os usuários no banco de dados PostgreSQL.
+    Esta função sincroniza o dicionário 'users_data' com as tabelas 'usuarios' e 'usuario_setores',
+    limpando as tabelas e reinserindo todos os dados fornecidos.
+    """
+    conn = get_db_connection()
+    if conn:
+        cur = None # Initialize cursor to None
+        try:
+            cur = conn.cursor()
+
+            # Limpa as tabelas de usuários e setores ANTES de inserir os dados restaurados
+            # Limpa primeiro a tabela de setores que depende da tabela de usuários
+            cur.execute("DELETE FROM usuario_setores;")
+            cur.execute("DELETE FROM usuarios;")
+
+            # Prepara listas para inserção em massa
+            user_records = []
+            sector_records = []
+
+            for username, data in users_data.items():
+                # Prepara dados para a tabela usuarios
+                password_hash = data.get("password", "")
+                tipo = data.get("tipo", "Visualizador")
+                nome_completo = data.get("nome_completo", "")
+                email = data.get("email", "")
+                 # Use data_criacao do dicionário se existir, senão CURRENT_TIMESTAMP via COALESCE no INSERT
+                data_criacao_str = data.get("data_criacao")
+                data_criacao_dt = datetime.fromisoformat(data_criacao_str) if data_criacao_str else None
+
+
+                user_records.append((
+                    username,
+                    password_hash,
+                    tipo,
+                    nome_completo if nome_completo else None, # Insere None se string vazia para permitir NULL no DB
+                    email if email else None, # Insere None se string vazia para permitir NULL no DB
+                    data_criacao_dt # Pode ser datetime object ou None
+                ))
+
+                # Prepara dados para a tabela usuario_setores
+                setores = data.get("setores", [])
+                for setor in setores:
+                    sector_records.append((username, setor))
+
+            # --- Inserir dados de usuários ---
+            if user_records:
+                 # Usa COALESCE para definir data_criacao para CURRENT_TIMESTAMP se o valor for None
+                sql_insert_users = """
+                    INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email, data_criacao)
+                    VALUES (%s, %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP));
+                """
+                cur.executemany(sql_insert_users, user_records)
+
+
+            # --- Inserir dados de setores ---
+            if sector_records:
+                sql_insert_sectors = "INSERT INTO usuario_setores (username, setor) VALUES (%s, %s);"
+                cur.executemany(sql_insert_sectors, sector_records)
+
+
+            conn.commit() # Confirma a transação
+            return True
+
+        except psycopg2.Error as e:
+            print(f"Erro ao salvar usuários no banco de dados: {e}") # Mantém este print essencial para logs
+            if conn:
+                conn.rollback() # Reverte a transação em caso de erro
+            return False
+        except Exception as e: # Captura outros tipos de erro Python/lógica
+             print(f"Erro inesperado durante o salvamento de usuários: {e}") # Mantém este print
+             if conn:
+                conn.rollback() # Reverte a transação
+             return False
+
+        finally:
+            if cur is not None:
+                try:
+                    cur.close()
+                except Exception as e:
+                     print(f"Erro ao fechar cursor no save_users finally: {e}") # Mantém para debug de fechamento
+
+            if conn is not None:
+                 try:
+                    if not conn.closed:
+                         conn.close()
+                 except Exception as e:
+                     print(f"Erro ao fechar conexão DB no save_users finally: {e}") # Mantém para debug de fechamento
+
+
+    else:
+        print("Erro: Não foi possível obter conexão com o banco de dados para salvar usuários.") # Mantém este print
+        return False
 
 # Indicadores (Mantidas, pois a associação de setor do indicador não muda)
 def load_indicators():
@@ -303,6 +399,7 @@ def save_indicators(indicators_data):
     """
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
 
@@ -335,7 +432,7 @@ def save_indicators(indicators_data):
                 else:
                     if not indicator_id:
                         indicator_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
-                        ind["id"] = indicator_id
+                        ind["id"] = indicator_id # Atualiza o ID no dicionário em memória também
 
                     cur.execute("""
                         INSERT INTO indicadores (id, nome, objetivo, formula, variaveis,
@@ -357,8 +454,8 @@ def save_indicators(indicators_data):
             conn.rollback()
             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
 
 # Resultados (Mantidas)
@@ -414,6 +511,7 @@ def save_results(results_data):
     """
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
 
@@ -427,7 +525,7 @@ def save_results(results_data):
                 try:
                     data_referencia_dt = datetime.fromisoformat(data_referencia_str)
                 except (ValueError, TypeError):
-                    print(f"Erro: data_referencia inválida para o resultado: {data_referencia_str}")
+                    print(f"Erro: data_referencia inválida para o resultado: {data_referencia_str}. Ignorando.") # Manter este log
                     continue
 
                 resultado = res.get("resultado")
@@ -466,22 +564,38 @@ def save_results(results_data):
                     """, (indicator_id, data_referencia_dt, resultado, valores_variaveis,
                           observacao, analise_critica, usuario, status_analise))
 
+            # Lógica para deletar resultados que não estão mais na lista (se aplicável)
+            # Esta lógica é mais complexa e geralmente não usada para resultados,
+            # a menos que a lista results_data represente o estado COMPLETO esperado da tabela.
+            # A implementação atual parece adicionar/atualizar. Se precisar deletar,
+            # a lógica com existing_results_keys_in_db e current_results_keys_to_save
+            # precisaria ser adicionada aqui, semelhante ao save_indicators.
+            # A versão anterior da save_results já incluía essa lógica de deleção.
+            # Mantenho a versão anterior que deleta para sincronização completa.
             current_results_keys_to_save = {(res.get("indicator_id"), datetime.fromisoformat(res.get("data_referencia")).isoformat()) for res in results_data if res.get("data_referencia")}
             results_to_delete = existing_results_keys_in_db - current_results_keys_to_save
             for ind_id, data_ref_str in results_to_delete:
-                data_ref_dt = datetime.fromisoformat(data_ref_str)
-                cur.execute("DELETE FROM resultados WHERE indicator_id = %s AND data_referencia = %s;", (ind_id, data_ref_dt))
-                print(f"Resultado para indicador '{ind_id}' e data '{data_ref_str}' removido do banco de dados.")
+                try:
+                    data_ref_dt = datetime.fromisoformat(data_ref_str)
+                    cur.execute("DELETE FROM resultados WHERE indicator_id = %s AND data_referencia = %s;", (ind_id, data_ref_dt))
+                    # print(f"Resultado para indicador '{ind_id}' e data '{data_ref_str}' removido do banco de dados.") # Removido DEBUG print
+                except (ValueError, TypeError):
+                    print(f"Erro ao tentar deletar resultado com data inválida: '{data_ref_str}'. Ignorando.") # Manter log de erro
+
 
             conn.commit()
             return True
         except psycopg2.Error as e:
-            print(f"Erro ao salvar resultados no banco de dados: {e}")
+            print(f"Erro ao salvar resultados no banco de dados: {e}") # Mantém este print
+            conn.rollback()
+            return False
+        except Exception as e:
+            print(f"Erro inesperado durante o salvamento de resultados: {e}") # Mantém este print
             conn.rollback()
             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
 
 # Configurações (Mantidas)
@@ -525,6 +639,7 @@ def save_config(config_data):
     """
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
 
@@ -538,12 +653,16 @@ def save_config(config_data):
             conn.commit()
             return True
         except psycopg2.Error as e:
-            print(f"Erro ao salvar configurações no banco de dados: {e}")
+            print(f"Erro ao salvar configurações no banco de dados: {e}") # Mantém este print
+            conn.rollback()
+            return False
+        except Exception as e:
+            print(f"Erro inesperado durante o salvamento de configurações: {e}") # Mantém este print
             conn.rollback()
             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
 
 # Logs de Backup (Mantidas)
@@ -584,31 +703,38 @@ def save_backup_log(log_data):
     """
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
             cur.execute("DELETE FROM log_backup;")
 
             for entry in log_data:
-                timestamp_dt = datetime.fromisoformat(entry.get("timestamp")) if entry.get("timestamp") else datetime.now()
+                # COALESCE para timestamp e user, se necessário
+                timestamp_dt = datetime.fromisoformat(entry.get("timestamp")) if entry.get("timestamp") else None
                 action = entry.get("action")
                 file_name = entry.get("file_name")
                 user_performed = entry.get("user", "System")
 
                 cur.execute("""
                     INSERT INTO log_backup (timestamp, action, file_name, user_performed)
-                    VALUES (%s, %s, %s, %s);
+                    VALUES (COALESCE(%s, CURRENT_TIMESTAMP), %s, %s, COALESCE(%s, 'Sistema'));
                 """, (timestamp_dt, action, file_name, user_performed))
 
             conn.commit()
             return True
         except psycopg2.Error as e:
-            print(f"Erro ao salvar o log de backup no banco de dados: {e}")
+            print(f"Erro ao salvar o log de backup no banco de dados: {e}") # Mantém este print
             conn.rollback()
             return False
+        except Exception as e:
+             print(f"Erro inesperado durante o salvamento do log de backup: {e}") # Mantém este print
+             conn.rollback()
+             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
+
 
 def log_backup_action(action, file_name, user_performed):
     """
@@ -616,10 +742,11 @@ def log_backup_action(action, file_name, user_performed):
     """
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
 
-            log_entry_user = user_performed
+            log_entry_user = user_performed if user_performed is not None else 'Sistema'
 
             cur.execute("""
                 INSERT INTO log_backup (action, file_name, user_performed)
@@ -629,12 +756,16 @@ def log_backup_action(action, file_name, user_performed):
             conn.commit()
             return True
         except psycopg2.Error as e:
-            print(f"Erro ao registrar ação de backup no banco de dados: {e}")
+            print(f"Erro ao registrar ação de backup no banco de dados: {e}") # Mantém este print
+            conn.rollback()
+            return False
+        except Exception as e:
+            print(f"Erro inesperado ao registrar ação de backup: {e}") # Mantém este print
             conn.rollback()
             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
 
 # Logs de Indicadores (Mantidas)
@@ -675,30 +806,35 @@ def save_indicator_log(log_data):
     """
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
             cur.execute("DELETE FROM log_indicadores;")
 
             for entry in log_data:
-                timestamp_dt = datetime.fromisoformat(entry.get("timestamp")) if entry.get("timestamp") else datetime.now()
+                timestamp_dt = datetime.fromisoformat(entry.get("timestamp")) if entry.get("timestamp") else None
                 action = entry.get("action")
                 indicator_id = entry.get("indicator_id")
                 user_performed = entry.get("user", "System")
 
                 cur.execute("""
                     INSERT INTO log_indicadores (timestamp, action, indicator_id, user_performed)
-                    VALUES (%s, %s, %s, %s);
+                    VALUES (COALESCE(%s, CURRENT_TIMESTAMP), %s, %s, COALESCE(%s, 'Sistema'));
                 """, (timestamp_dt, action, indicator_id, user_performed))
 
             conn.commit()
             return True
         except psycopg2.Error as e:
-            print(f"Erro ao salvar o log de indicadores no banco de dados: {e}")
+            print(f"Erro ao salvar o log de indicadores no banco de dados: {e}") # Mantém este print
+            conn.rollback()
+            return False
+        except Exception as e:
+            print(f"Erro inesperado durante o salvamento do log de indicadores: {e}") # Mantém este print
             conn.rollback()
             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
 
 def log_indicator_action(action, indicator_id, user_performed):
@@ -707,10 +843,11 @@ def log_indicator_action(action, indicator_id, user_performed):
     """
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
 
-            log_entry_user = user_performed
+            log_entry_user = user_performed if user_performed is not None else 'Sistema'
 
             cur.execute("""
                 INSERT INTO log_indicadores (action, indicator_id, user_performed)
@@ -720,12 +857,16 @@ def log_indicator_action(action, indicator_id, user_performed):
             conn.commit()
             return True
         except psycopg2.Error as e:
-            print(f"Erro ao registrar ação de indicador no banco de dados: {e}")
+            print(f"Erro ao registrar ação de indicador no banco de dados: {e}") # Mantém este print
+            conn.rollback()
+            return False
+        except Exception as e:
+            print(f"Erro inesperado ao registrar ação de indicador: {e}") # Mantém este print
             conn.rollback()
             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
 
 # Logs de Usuários (Mantidas)
@@ -766,31 +907,37 @@ def save_user_log(log_data):
     """
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
             cur.execute("DELETE FROM log_usuarios;")
 
             for entry in log_data:
-                timestamp_dt = datetime.fromisoformat(entry.get("timestamp")) if entry.get("timestamp") else datetime.now()
+                timestamp_dt = datetime.fromisoformat(entry.get("timestamp")) if entry.get("timestamp") else None
                 action = entry.get("action")
                 username_affected = entry.get("username")
                 user_performed = entry.get("user", "System")
 
                 cur.execute("""
                     INSERT INTO log_usuarios (timestamp, action, username_affected, user_performed)
-                    VALUES (%s, %s, %s, %s);
+                    VALUES (COALESCE(%s, CURRENT_TIMESTAMP), %s, %s, COALESCE(%s, 'Sistema'));
                 """, (timestamp_dt, action, username_affected, user_performed))
 
             conn.commit()
             return True
         except psycopg2.Error as e:
-            print(f"Erro ao salvar o log de usuários no banco de dados: {e}")
+            print(f"Erro ao salvar o log de usuários no banco de dados: {e}") # Mantém este print
+            conn.rollback()
+            return False
+        except Exception as e:
+            print(f"Erro inesperado durante o salvamento do log de usuários: {e}") # Mantém este print
             conn.rollback()
             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
+
 
 def log_user_action(action, username_affected, user_performed):
     """
@@ -798,10 +945,11 @@ def log_user_action(action, username_affected, user_performed):
     """
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
 
-            log_entry_user = user_performed
+            log_entry_user = user_performed if user_performed is not None else 'Sistema'
 
             cur.execute("""
                 INSERT INTO log_usuarios (action, username_affected, user_performed)
@@ -811,12 +959,16 @@ def log_user_action(action, username_affected, user_performed):
             conn.commit()
             return True
         except psycopg2.Error as e:
-            print(f"Erro ao registrar ação de usuário no banco de dados: {e}")
+            print(f"Erro ao registrar ação de usuário no banco de dados: {e}") # Mantém este print
+            conn.rollback()
+            return False
+        except Exception as e:
+            print(f"Erro inesperado ao registrar ação de usuário: {e}") # Mantém este print
             conn.rollback()
             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
 
 # --- Funções Auxiliares e de UI (Adaptadas para o DB) ---
@@ -1109,6 +1261,7 @@ def verify_credentials(username, password):
     """Verifica as credenciais do usuário diretamente do banco de dados."""
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
             # A query agora só precisa da senha_hash e tipo da tabela usuarios
@@ -1124,8 +1277,8 @@ def verify_credentials(username, password):
             print(f"Erro ao verificar credenciais: {e}")
             return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
 
 def get_user_type(username):
@@ -1380,26 +1533,33 @@ def create_indicator(SETORES, TIPOS_GRAFICOS):
                             "data_atualizacao": datetime.now().isoformat() # Data da última atualização
                         }
                         indicators.append(new_indicator) # Adiciona à lista em memória
-                        save_indicators(indicators) # Salva a lista no banco de dados
-                        log_indicator_action("Indicador criado", new_indicator["id"], st.session_state.username) # Registra no log
-                        st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
-                        time.sleep(2) # Aguarda um pouco antes de limpar e rerodar
 
-                        # Limpa os inputs e o estado da sessão associado ao formulário de criação
-                        if f"{form_prefix}nome_input" in st.session_state: del st.session_state[f"{form_prefix}nome_input"]
-                        if f"{form_prefix}objetivo_input" in st.session_state: del st.session_state[f"{form_prefix}objetivo_input"]
-                        if f"{form_prefix}unidade_input" in st.session_state: del st.session_state[f"{form_prefix}unidade_input"]
-                        if f"{form_prefix}formula_input" in st.session_state: del st.session_state[f"{form_prefix}formula_input"]
-                        if f"{form_prefix}indicator_form" in st.session_state: del st.session_state[f"{form_prefix}indicator_form"] # Limpa o estado do form principal
-                        st.session_state[f'{form_prefix}current_formula_vars'] = []
-                        st.session_state[f'{form_prefix}current_var_descriptions'] = {}
-                        st.session_state[f'{form_prefix}sample_values'] = {}
-                        st.session_state[f'{form_prefix}test_result'] = None
-                        st.session_state[f'{form_prefix}show_variable_section'] = False
-                        st.session_state[f'{form_prefix}formula_loaded'] = False
+                        # *** CORREÇÃO AQUI: Verificar o resultado de save_indicators ***
+                        if save_indicators(indicators): # Salva a lista no banco de dados e verifica
+                             log_indicator_action("Indicador criado", new_indicator["id"], st.session_state.username) # Registra no log
+                             st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
+                             time.sleep(2) # Aguarda um pouco antes de limpar e rerodar
 
-                        scroll_to_top() # Rola a página para o topo
-                        st.rerun() # Reinicia a aplicação para limpar a tela e mostrar sucesso
+                             # Limpa os inputs e o estado da sessão associado ao formulário de criação
+                             if f"{form_prefix}nome_input" in st.session_state: del st.session_state[f"{form_prefix}nome_input"]
+                             if f"{form_prefix}objetivo_input" in st.session_state: del st.session_state[f"{form_prefix}objetivo_input"]
+                             if f"{form_prefix}unidade_input" in st.session_state: del st.session_state[f"{form_prefix}unidade_input"]
+                             if f"{form_prefix}formula_input" in st.session_state: del st.session_state[f"{form_prefix}formula_input"]
+                             if f"{form_prefix}indicator_form" in st.session_state: del st.session_state[f"{form_prefix}indicator_form"] # Limpa o estado do form principal
+                             st.session_state[f'{form_prefix}current_formula_vars'] = []
+                             st.session_state[f'{form_prefix}current_var_descriptions'] = {}
+                             st.session_state[f'{form_prefix}sample_values'] = {}
+                             st.session_state[f'{form_prefix}test_result'] = None
+                             st.session_state[f'{form_prefix}show_variable_section'] = False
+                             st.session_state[f'{form_prefix}formula_loaded'] = False
+
+                             scroll_to_top() # Rola a página para o topo
+                             st.rerun() # Reinicia a aplicação para limpar a tela e mostrar sucesso
+                        else:
+                             st.error(f"❌ Erro ao salvar o indicador '{nome_submitted}' no banco de dados. Verifique o console para detalhes do erro.")
+                             # Não limpa inputs ou estado da sessão para permitir correção pelo usuário
+                             pass
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -1568,22 +1728,27 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
                                 ind["data_atualizacao"] = datetime.now().isoformat()
                                 break # Para o loop após encontrar e atualizar
 
-                        save_indicators(indicators) # Salva a lista atualizada no banco de dados
-                        st.session_state["indicators"] = load_indicators() # Recarrega do DB para garantir consistência
+                        # *** CORREÇÃO AQUI: Verificar o resultado de save_indicators ***
+                        if save_indicators(indicators): # Salva a lista atualizada no banco de dados e verifica
+                             st.session_state["indicators"] = load_indicators() # Recarrega do DB para garantir consistência
+                             log_indicator_action("Indicador atualizado", selected_indicator["id"], st.session_state.username) # Log
 
-                        with st.spinner("Atualizando indicador..."):
-                            st.success(f"✅ Indicador '{nome}' atualizado com sucesso!")
-                            time.sleep(2) # Aguarda um pouco
+                             with st.spinner("Atualizando indicador..."):
+                                 st.success(f"✅ Indicador '{nome}' atualizado com sucesso!")
+                                 time.sleep(2) # Aguarda um pouco
 
-                        # Limpa o estado da sessão relacionado à edição para voltar à seleção
-                        st.session_state.editing_indicator_id = None
-                        st.session_state.current_formula_vars = []
-                        st.session_state.current_var_descriptions = {}
-                        st.session_state.current_variable_values = {}
-                        if 'current_test_result' in st.session_state: del st.session_state.current_test_result
+                             # Limpa o estado da sessão relacionado à edição para voltar à seleção
+                             st.session_state.editing_indicator_id = None
+                             st.session_state.current_formula_vars = []
+                             st.session_state.current_var_descriptions = {}
+                             st.session_state.current_variable_values = {}
+                             if 'current_test_result' in st.session_state: del st.session_state.current_test_result
 
-                        scroll_to_top() # Rola para o topo
-                        st.rerun() # Reinicia a aplicação
+                             scroll_to_top() # Rola para o topo
+                             st.rerun() # Reinicia a aplicação
+                        else:
+                             st.error(f"❌ Erro ao salvar o indicador '{nome}' no banco de dados. Verifique o console para detalhes do erro.")
+                             # Não limpa o estado de edição para permitir correção
 
                 else:
                     st.warning("⚠️ Por favor, preencha todos os campos obrigatórios (Nome, Objetivo, Fórmula).")
@@ -1612,20 +1777,27 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
         # Executa a exclusão se o estado for 'deleting'
         if st.session_state.get(delete_state_key) == 'deleting':
             # Função para deletar no DB (implementada abaixo)
-            delete_indicator(selected_indicator["id"], st.session_state.username)
-            with st.spinner("Excluindo indicador..."):
-                st.success(f"Indicador '{selected_indicator['nome']}' excluído com sucesso!")
-                time.sleep(2) # Aguarda um pouco
+            # *** CORREÇÃO AQUI: Verificar o resultado de delete_indicator ***
+            if delete_indicator(selected_indicator["id"], st.session_state.username):
+                 with st.spinner("Excluindo indicador..."):
+                    st.success(f"Indicador '{selected_indicator['nome']}' excluído com sucesso!")
+                    time.sleep(2) # Aguarda um pouco
 
-            # Limpa o estado da sessão e reroda
-            st.session_state[delete_state_key] = None
-            st.session_state.editing_indicator_id = None
-            st.session_state.current_formula_vars = []
-            st.session_state.current_var_descriptions = {}
-            st.session_state.current_variable_values = {}
-            if 'current_test_result' in st.session_state: del st.session_state.current_test_result
-            scroll_to_top()
-            st.rerun() # Reinicia a aplicação
+                 # Limpa o estado da sessão e reroda
+                 st.session_state[delete_state_key] = None
+                 st.session_state.editing_indicator_id = None
+                 st.session_state.current_formula_vars = []
+                 st.session_state.current_var_descriptions = {}
+                 st.session_state.current_variable_values = {}
+                 if 'current_test_result' in st.session_state: del st.session_state.current_test_result
+                 scroll_to_top()
+                 st.rerun() # Reinicia a aplicação
+            else:
+                 st.error(f"❌ Erro ao excluir indicador '{selected_indicator['nome']}' do banco de dados. Verifique o console para detalhes do erro.")
+                 # Não limpa o estado de exclusão para permitir nova tentativa ou cancelar
+                 st.session_state[delete_state_key] = None # Limpa o estado de confirmação para não ficar preso
+                 pass
+
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1633,89 +1805,49 @@ def delete_indicator(indicator_id, user_performed):
     """Exclui um indicador e seus resultados associados do banco de dados."""
     conn = get_db_connection()
     if conn:
+        cur = None
         try:
             cur = conn.cursor()
             # A exclusão na tabela indicadores deve ser suficiente,
             # pois a chave estrangeira em 'resultados' tem ON DELETE CASCADE
             cur.execute("DELETE FROM indicadores WHERE id = %s;", (indicator_id,))
             conn.commit()
-            log_indicator_action("Indicador excluído", indicator_id, user_performed)
-            # Recarrega a lista de indicadores no estado da sessão após exclusão bem-sucedida
-            # st.session_state["indicators"] = load_indicators() # Removido, load_indicators é chamado em edit_indicator ao entrar na página
+            log_indicator_action("Indicador excluído", indicator_id, user_performed) # Log
             return True
         except psycopg2.Error as e:
-            print(f"Erro ao excluir indicador do banco de dados: {e}")
+            print(f"Erro ao excluir indicador do banco de dados: {e}") # Mantém este print
             st.error(f"Erro ao excluir indicador: {e}") # Exibe erro no Streamlit
             conn.rollback()
             return False
-        finally:
-            cur.close()
-            conn.close()
-    return False
-
-# Esta função não é mais usada diretamente para excluir resultados individuais no fill_indicator,
-# a exclusão foi integrada diretamente no loop de exibição de resultados. Mantida para referência se necessário.
-# def display_result_with_delete(result, selected_indicator):
-#     """Exibe um resultado com a opção de excluir e ícone de status da meta."""
-#     data_referencia = result.get('data_referencia')
-#     if data_referencia:
-#         col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 2, 2, 1])
-#         with col1: st.write(pd.to_datetime(data_referencia).strftime("%B/%Y"))
-#         with col2:
-#             resultado = result.get('resultado', 'N/A'); unidade = selected_indicator.get('unidade', ''); meta = selected_indicator.get('meta', None); comparacao = selected_indicator.get('comparacao', 'Maior é melhor')
-#             icone = ":white_circle:"
-#             try:
-#                 resultado_float = float(resultado); meta_float = float(meta)
-#                 if comparacao == "Maior é melhor": icone = ":white_check_mark:" if resultado_float >= meta_float else ":x:"
-#                 elif comparacao == "Menor é melhor": icone = ":white_check_mark:" if resultado_float <= meta_float else ":x:"
-#             except (TypeError, ValueError): pass
-#             st.markdown(f"{icone} **{resultado:.2f}{unidade}**")
-#         with col3: st.write(result.get('observacao', 'N/A'))
-#         with col4: st.write(result.get('status_analise', 'N/A'))
-#         with col5: st.write(pd.to_datetime(result.get('data_atualizacao')).strftime("%d/%m/%Y %H:%M") if result.get('data_atualizacao') else 'N/A')
-#         with col6:
-#             # Botão de exclusão para este resultado específico
-#             if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}_{selected_indicator['id']}_{datetime.now().timestamp()}"): # Chave mais única com timestamp
-#                 # Chama a função para deletar o resultado no DB
-#                 delete_result(selected_indicator['id'], data_referencia, st.session_state.username)
-#                 # Recarrega os resultados após a exclusão para atualizar a exibição
-#                 # (A exclusão está no loop de exibição em fill_indicator agora)
-#                 # st.rerun() # delete_result já chama rerun
-#     else:
-#         st.warning("Resultado com data de referência ausente. Impossível exibir/excluir este resultado.")
-
-
-def delete_result(indicator_id, data_referencia_str, user_performed):
-    """Exclui um resultado específico de um indicador no banco de dados."""
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor()
-            # Converte a string de data de referência para datetime para a query
-            data_referencia_dt = datetime.fromisoformat(data_referencia_str)
-            cur.execute("""
-                DELETE FROM resultados
-                WHERE indicator_id = %s AND data_referencia = %s;
-            """, (indicator_id, data_referencia_dt))
-            conn.commit()
-            # Log da ação de exclusão de resultado
-            log_indicator_action(f"Resultado excluído para {data_referencia_str}", indicator_id, user_performed)
-            st.success("Resultado excluído com sucesso!")
-            time.sleep(1) # Pequeno delay antes do rerun
-            st.rerun() # Reroda para atualizar a lista de resultados exibida
-            return True
-        except (ValueError, TypeError):
-             st.error(f"Erro ao excluir resultado: Formato de data inválido para '{data_referencia_str}'.")
+        except Exception as e:
+             print(f"Erro inesperado ao excluir indicador: {e}") # Mantém este print
+             st.error(f"Erro inesperado ao excluir indicador: {e}") # Exibe erro no Streamlit
+             conn.rollback()
              return False
-        except psycopg2.Error as e:
-            print(f"Erro ao excluir resultado do banco de dados: {e}")
-            st.error(f"Erro ao excluir resultado do banco de dados: {e}")
-            conn.rollback()
-            return False
         finally:
-            cur.close()
-            conn.close()
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
     return False
+
+# Esta função auxiliar calcula o status (Acima/Abaixo/N/A) para um único resultado
+def calculate_status(result, meta, comparacao):
+    """Calcula o status do resultado ('Acima da Meta', 'Abaixo da Meta', 'N/A')."""
+    try:
+        # Tenta converter resultado e meta para float. Se falhar, não é numérico.
+        # Trata meta None como 0.0 para comparações numéricas
+        result_float = float(result)
+        meta_float = float(meta if meta is not None else 0.0)
+
+        if comparacao == "Maior é melhor":
+            return "Acima da Meta" if result_float >= meta_float else "Abaixo da Meta"
+        elif comparacao == "Menor é melhor":
+            return "Acima da Meta" if result_float <= meta_float else "Abaixo da Meta"
+        else:
+            # Não deve acontecer com as opções atuais, mas como fallback seguro
+            return "N/A"
+    except (ValueError, TypeError):
+        # Se a conversão de resultado ou meta falhar, o status é N/A
+        return "N/A"
 
 
 def fill_indicator(SETORES, TEMA_PADRAO):
@@ -1735,6 +1867,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
     user_type = st.session_state.user_type
     user_sectors = st.session_state.user_sectors # Lista de setores
     user_name = st.session_state.get("username", "Usuário não identificado")
+
 
     # Filtrar indicadores para Operadores: só mostra indicadores onde o setor responsável está na lista de setores do usuário
     if user_type == "Operador":
@@ -2033,22 +2166,25 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                     all_results = [r for r in all_results if not (r["indicator_id"] == new_result["indicator_id"] and r["data_referencia"] == new_result["data_referencia"])]
                     all_results.append(new_result)
 
-                    # Salva a lista atualizada de resultados no DB
-                    save_results(all_results)
+                    # *** CORREÇÃO AQUI: Verificar o resultado de save_results ***
+                    if save_results(all_results): # Salva a lista atualizada de resultados no DB e verifica
+                         with st.spinner("Salvando resultado..."):
+                            st.success(f"✅ Resultado adicionado/atualizado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
+                            time.sleep(2) # Pequeno delay
 
-                    with st.spinner("Salvando resultado..."):
-                        st.success(f"✅ Resultado adicionado/atualizado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
-                        time.sleep(2) # Pequeno delay
+                         # Limpa o estado da sessão associado ao formulário de preenchimento para este período/indicador
+                         if variable_values_key in st.session_state:
+                            del st.session_state[variable_values_key]
+                         if calculated_result_state_key in st.session_state:
+                            del st.session_state[calculated_result_state_key]
+                         # Limpar inputs de texto (observacoes e 5w2h) - Streamlit geralmente faz isso sozinho em reruns de formulários, mas podemos limpar explicitamente se necessário
+                         # del st.session_state[f"obs_input_{selected_indicator['id']}_{selected_period_str}"] # Exemplo
+                         scroll_to_top() # Rola para o topo
+                         st.rerun() # Reinicia a aplicação
+                    else:
+                         st.error(f"❌ Erro ao salvar o resultado para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')} no banco de dados. Verifique o console para detalhes do erro.")
+                         # Não limpa os inputs para permitir correção
 
-                    # Limpa o estado da sessão associado ao formulário de preenchimento para este período/indicador
-                    if variable_values_key in st.session_state:
-                        del st.session_state[variable_values_key]
-                    if calculated_result_state_key in st.session_state:
-                        del st.session_state[calculated_result_state_key]
-                    # Limpar inputs de texto (observacoes e 5w2h) - Streamlit geralmente faz isso sozinho em reruns de formulários, mas podemos limpar explicitamente se necessário
-                    # del st.session_state[f"obs_input_{selected_indicator['id']}_{selected_period_str}"] # Exemplo
-                    scroll_to_top() # Rola para o topo
-                    st.rerun() # Reinicia a aplicação
                 else:
                     st.warning("⚠️ Por favor, informe o resultado ou calcule-o antes de salvar.")
 
@@ -2290,26 +2426,6 @@ def get_analise_status(analise_dict):
     else: return f"⚠️ Preenchida parcialmente ({campos_preenchidos}/{total_campos})"
 
 
-def calculate_status(result, meta, comparacao):
-    """Calcula o status do resultado ('Acima da Meta', 'Abaixo da Meta', 'N/A')."""
-    try:
-        # Tenta converter resultado e meta para float. Se falhar, não é numérico.
-        # Trata meta None como 0.0 para comparações numéricas
-        result_float = float(result)
-        meta_float = float(meta if meta is not None else 0.0)
-
-        if comparacao == "Maior é melhor":
-            return "Acima da Meta" if result_float >= meta_float else "Abaixo da Meta"
-        elif comparacao == "Menor é melhor":
-            return "Acima da Meta" if result_float <= meta_float else "Abaixo da Meta"
-        else:
-            # Não deve acontecer com as opções atuais, mas como fallback seguro
-            return "N/A"
-    except (ValueError, TypeError):
-        # Se a conversão de resultado ou meta falhar, o status é N/A
-        return "N/A"
-
-
 def show_dashboard(SETORES, TEMA_PADRAO):
     """Mostra o dashboard de indicadores."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
@@ -2374,7 +2490,7 @@ def show_dashboard(SETORES, TEMA_PADRAO):
 
     if not filtered_indicators:
         selected_setor_display = ", ".join(setor_filtro) if setor_filtro else "selecionado(s)"
-        st.warning(f"Nenhum indicador encontrado para o(s) setor(es) {selected_setor_display}.\n")
+        st.warning(f"Nenhum indicador encontrado para o(s) setor(es) {selected_setor_display}.")
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
@@ -2545,7 +2661,7 @@ def show_dashboard(SETORES, TEMA_PADRAO):
             # Expander for historical series and critical analysis
             with st.expander("Ver Série Histórica e Análise Crítica"):
                 if data["results"]:
-                    # Prepare DataFrame for historical series
+                    # Prepara DataFrame para a série histórica
                     df_hist = pd.DataFrame(data["results"])
                     df_hist["data_referencia"] = pd.to_datetime(df_hist["data_referencia"])
                     df_hist = df_hist.sort_values("data_referencia", ascending=False)
@@ -2566,20 +2682,20 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                     df_display["resultado"] = df_display["resultado"].apply(lambda x: f"{float(x):.2f}{unidade_display}" if isinstance(x, (int, float)) else "N/A")
                     df_display["data_referencia"] = df_display["data_referencia"].apply(lambda x: x.strftime("%d/%m/%Y"))
 
-                    # Process the critical analysis column to display the status
+                    # Processa a coluna de análise crítica para exibir o status
                     if "analise_critica" in df_display.columns:
                          df_display["analise_status"] = df_display["analise_critica"].apply(get_analise_status)
                          df_display = df_display.drop(columns=["analise_critica"]) # Remove the complex original column
                          cols_display_order = ["data_referencia", "resultado", "status", "observacao", "analise_status"]
                          df_display = df_display.reindex(columns=[col for col in cols_display_order if col in df_display.columns]) # Reorder
 
-                    # Rename columns for friendly display
+                    # Renomeia as colunas para exibição amigável
                     display_column_names = {"data_referencia": "Data de Referência", "resultado": f"Resultado ({unidade_display})", "status": "Status", "observacao": "Observações", "analise_status": "Análise Crítica"}
                     df_display.rename(columns=display_column_names, inplace=True)
 
                     st.dataframe(df_display, use_container_width=True) # Display the historical series table
 
-                    # Trend Analysis (requires at least 3 NUMERIC results)
+                    # Análise de Tendência (requer at least 3 NUMERIC results)
                     # Filter results that are numeric for trend analysis
                     numeric_results = df_hist[pd.to_numeric(df_hist['resultado'], errors='coerce').notna()].copy()
                     numeric_results['resultado'] = pd.to_numeric(numeric_results['resultado']) # Convert to numeric
@@ -2645,29 +2761,32 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                     # Critical Analysis 5W2H of the latest result
                     st.markdown("<h4>Análise Crítica 5W2H do Último Período</h4>", unsafe_allow_html=True)
                     # Find the latest result (regardless of whether it is numeric)
-                    ultimo_resultado = df_hist.iloc[0]
-                    has_analysis = False
-                    analise_dict = {}
-                    if "analise_critica" in ultimo_resultado and ultimo_resultado["analise_critica"] is not None:
-                         analise_dict = ultimo_resultado["analise_critica"]
-                         # Check if there is at least one analysis field filled
-                         if any(analise_dict.get(key, "").strip() for key in ["what", "why", "who", "when", "where", "how", "howMuch"]):
-                             has_analysis = True
+                    if not df_hist.empty:
+                        ultimo_resultado = df_hist.iloc[0]
+                        has_analysis = False
+                        analise_dict = {}
+                        if "analise_critica" in ultimo_resultado and ultimo_resultado["analise_critica"] is not None:
+                             analise_dict = ultimo_resultado["analise_critica"]
+                             # Check if there is at least one analysis field filled
+                             if any(analise_dict.get(key, "").strip() for key in ["what", "why", "who", "when", "where", "how", "howMuch"]):
+                                 has_analysis = True
 
 
-                    if has_analysis:
-                        # Display the 5W2H analysis fields
-                        st.markdown("**O que (What):** " + analise_dict.get("what", ""))
-                        st.markdown("**Por que (Why):** " + analise_dict.get("why", ""))
-                        st.markdown("**Quem (Who):** " + analise_dict.get("who", ""))
-                        st.markdown("**Quando (When):** " + analise_dict.get("when", ""))
-                        st.markdown("**Onde (Where):** " + analise_dict.get("where", ""))
-                        st.markdown("**Como (How):** " + analise_dict.get("how", ""))
-                        st.markdown("**Quanto custa (How Much):** " + analise_dict.get("howMuch", ""))
-                    else:
-                        st.info("Não há análise crítica registrada para o último resultado. Utilize a opção 'Preencher Indicador' para adicionar uma análise crítica no formato 5W2H.")
-                        # Expander explaining 5W2H (now as simple markdown)
-                        st.markdown("""**O que é a análise 5W2H?**\n\n5W2H é uma metodologia de análise que ajuda a estruturar o pensamento crítico sobre um problema ou situação:
+                        if has_analysis:
+                            # Exibe os campos da análise 5W2H
+                            st.markdown("**O que (What):** " + analise_dict.get("what", ""))
+                            st.markdown("**Por que (Why):** " + analise_dict.get("why", ""))
+                            st.markdown("**Quem (Who):** " + analise_dict.get("who", ""))
+                            st.markdown("**Quando (When):** " + analise_dict.get("when", ""))
+                            st.markdown("**Onde (Where):** " + analise_dict.get("where", ""))
+                            st.markdown("**Como (How):** " + analise_dict.get("how", ""))
+                            st.markdown("**Quanto custa (How Much):** " + analise_dict.get("howMuch", ""))
+                        else:
+                            st.info("Não há análise crítica registrada para o último resultado. Utilize a opção 'Preencher Indicador' para adicionar uma análise crítica no formato 5W2H.")
+                            # Explicação 5W2H como markdown simples (não aninhado em expander)
+                            st.markdown("""**O que é a análise 5W2H?**
+
+5W2H é uma metodologia de análise que ajuda a estruturar o pensamento crítico sobre um problema ou situação:
 - **What (O quê)**: O que está acontecendo? Qual é o problema ou situação?
 - **Why (Por quê)**: Por que isso está acontecendo? Quais são as causas?
 - **Who (Quem)**: Quem é responsável? Quem está envolvido?
@@ -2676,8 +2795,9 @@ def show_dashboard(SETORES, TEMA_PADRAO):
 - **How (Como)**: Como resolver o problema? Quais ações devem ser tomadas?
 - **How Much (Quanto custa)**: Quanto custará implementar a solução? Quais recursos são necessários?
 Esta metodologia ajuda a garantir que todos os aspectos importantes sejam considerados na análise e no plano de ação.""")
+                    else: # Caso não haja último resultado (mesmo não numérico)
+                        st.info("Não há resultados registrados para este indicador para exibir a série histórica ou análise crítica.")
 
-                else: st.info("Não há resultados registrados para este indicador para exibir a série histórica.")
         else:
             # Message if no results for the indicator
             st.info("Este indicador ainda não possui resultados registrados.")
@@ -2721,6 +2841,7 @@ Esta metodologia ajuda a garantir que todos os aspectos importantes sejam consid
         st.markdown(download_link, unsafe_allow_html=True) # Display download link
 
     st.markdown('</div>', unsafe_allow_html=True)
+
 
 def show_overview():
     """Mostra a visão geral dos indicadores."""
@@ -2774,13 +2895,13 @@ def show_overview():
             last_result = last_result_obj["resultado"]
             last_date = last_result_obj["data_referencia"]
 
+            # Calcula status usando a função auxiliar
+            status = calculate_status(last_result, ind.get("meta"), ind.get("comparacao", "Maior é melhor"))
+
             try:
-                # Calcula status e variação se o último resultado for numérico
+                # Calcula variação se o último resultado for numérico
                 meta = float(ind.get("meta", 0.0))
                 resultado = float(last_result)
-
-                if ind["comparacao"] == "Maior é melhor": status = "Acima da Meta" if resultado >= meta else "Abaixo da Meta"
-                else: status = "Acima da Meta" if resultado <= meta else "Abaixo da Meta"
 
                 if meta != 0.0:
                     variacao = ((resultado / meta) - 1) * 100
@@ -2790,14 +2911,14 @@ def show_overview():
                     elif resultado < 0: variacao = float('-inf')
                     else: variacao = 0
             except (TypeError, ValueError):
-                 status = "N/A"
+                 status = "N/A" # Set status to N/A if result is not numeric
                  variacao = 0 # Reseta variação
 
 
             # Formata os valores para exibição na tabela
             data_formatada = format_date_as_month_year(last_date)
             last_result_formatted = f"{float(last_result):.2f}{unidade_display}" if isinstance(last_result, (int, float)) else "N/A"
-            meta_formatted = f"{float(meta):.2f}{unidade_display}"
+            meta_formatted = f"{float(ind.get('meta', 0.0)):.2f}{unidade_display}"
             # Formata a variação, tratando infinitos
             if variacao == float('inf'): variacao_formatted = "+Inf"
             elif variacao == float('-inf'): variacao_formatted = "-Inf"
@@ -2907,7 +3028,7 @@ def show_settings():
         backup_hour = datetime.strptime(config["backup_hour"], "%H:%M").time()
     except ValueError:
         # Se o formato salvo estiver errado, usa 00:00 e corrige no DB
-        st.error("Formato de hora de backup inválido na configuração. Resetando para 00:00.")
+        st.error("Formato de hora de backup inválido na configuração. Resetando para 00:00.") # Mantém este print
         config["backup_hour"] = "00:00"
         save_config(config)
         backup_hour = datetime.time(0, 0)
@@ -2918,11 +3039,10 @@ def show_settings():
     # Se o horário foi alterado, salva a nova configuração
     if new_backup_hour != backup_hour:
         config["backup_hour"] = new_backup_hour.strftime("%H:%M")
-        save_config(config)
-        st.success("Horário de backup automático atualizado com sucesso!")
-        # Nota: O agendador em outro thread precisa ser reiniciado ou reconfigurado
-        # para refletir a nova hora. A implementação atual não faz isso dinamicamente.
-        # Seria necessário parar o thread antigo e iniciar um novo com a nova hora.
+        if save_config(config):
+             st.success("Horário de backup automático atualizado com sucesso!")
+        else:
+             st.error("Falha ao atualizar o horário de backup. Verifique o console.")
 
 
     # Exibe a data do último backup automático
@@ -2936,6 +3056,7 @@ def show_settings():
     if st.button("⟳ Criar novo backup manual", help="Cria um backup manual de todos os dados do sistema."):
         with st.spinner("Criando backup manual..."):
             # Garante que a chave de criptografia existe e inicializa o cipher
+            # As funções generate_key e initialize_cipher já imprimem erros no console se falharem
             generate_key(KEY_FILE)
             cipher = initialize_cipher(KEY_FILE)
             # Chama a função de backup com tipo 'user'
@@ -2943,7 +3064,8 @@ def show_settings():
             if backup_file:
                 st.success(f"Backup manual criado: {backup_file}")
             else:
-                st.error("Falha ao criar o backup manual.")
+                st.error("Falha ao criar o backup manual. Verifique o console para detalhes.")
+
 
     # Seção para restaurar backup
     if not os.path.exists("backups"):
@@ -2970,7 +3092,7 @@ def show_settings():
                     if backup_file_antes_restauracao:
                         st.success(f"Backup de segurança criado: {backup_file_antes_restauracao}")
                     else:
-                        st.error("Falha ao criar o backup de segurança. Restauração cancelada.")
+                        st.error("Falha ao criar o backup de segurança. Restauração cancelada. Verifique o console.")
                         return # Aborta a restauração se o backup de segurança falhar
 
                 # Procede com a restauração
@@ -2979,6 +3101,7 @@ def show_settings():
                         # Garante chave e cipher novamente (caso tenha mudado no rerun)
                         generate_key(KEY_FILE)
                         cipher = initialize_cipher(KEY_FILE)
+                        # restore_data já exibe erro se falhar
                         if restore_data(os.path.join("backups", selected_backup), cipher):
                             st.success("Backup restaurado com sucesso! A aplicação será reiniciada.")
                             # Limpa o estado da sessão para forçar recarregamento dos dados
@@ -2987,9 +3110,10 @@ def show_settings():
                             time.sleep(2) # Pequeno delay
                             st.rerun() # Reinicia a aplicação
                         else:
-                            st.error("Falha ao restaurar o backup.")
+                            # Mensagem de erro já é exibida por restore_data
+                            pass
                 except Exception as e:
-                    st.error(f"Ocorreu um erro durante a restauração: {e}")
+                    st.error(f"Ocorreu um erro inesperado durante a restauração: {e}")
     else:
         st.info("Nenhum arquivo de backup encontrado no diretório 'backups'.")
 
@@ -3009,7 +3133,7 @@ def show_settings():
                     st.session_state.confirm_limpar_resultados = True
                     # Adiciona um botão de confirmação separado para evitar cliques acidentais
                     if st.button("Confirmar Limpeza de Resultados", key="confirm_limpar_resultados_btn"): # Chave única
-                         pass # Clicar aqui muda o estado para o bloco abaixo executar no próximo rerun
+                        pass # Clicar aqui muda o estado para o bloco abaixo executar no próximo rerun
                     if st.button("Cancelar", key="cancel_limpar_resultados_btn"): # Botão de cancelar
                          st.session_state.confirm_limpar_resultados = False
                          st.info("Limpeza cancelada.")
@@ -3020,6 +3144,7 @@ def show_settings():
                          with st.spinner("Limpando resultados..."):
                              conn = get_db_connection()
                              if conn:
+                                 cur = None
                                  try:
                                      cur = conn.cursor()
                                      cur.execute("DELETE FROM resultados;") # Deleta todos os resultados
@@ -3028,12 +3153,12 @@ def show_settings():
                                      # Limpa a lista de resultados no estado da sessão
                                      if 'results' in st.session_state: del st.session_state.results
                                  except Exception as e:
-                                     st.error(f"Erro ao excluir resultados: {e}")
+                                     st.error(f"Erro ao excluir resultados: {e}") # Mantém este print
                                      conn.rollback()
                                  finally:
-                                     cur.close()
-                                     conn.close()
-                          # Reseta o estado de confirmação
+                                     if cur is not None: cur.close()
+                                     if conn is not None: conn.close()
+                         # Reseta o estado de confirmação
                          st.session_state.confirm_limpar_resultados = False
                          if "confirm_limpar_resultados_btn" in st.session_state: del st.session_state.confirm_limpar_resultados_btn
                          if "cancel_limpar_resultados_btn" in st.session_state: del st.session_state.cancel_limpar_resultados_btn
@@ -3060,6 +3185,7 @@ def show_settings():
                          with st.spinner("Limpando tudo..."):
                              conn = get_db_connection()
                              if conn:
+                                 cur = None
                                  try:
                                      cur = conn.cursor()
                                      # Deleta todos os indicadores (resultados serão excluídos via ON DELETE CASCADE)
@@ -3070,175 +3196,21 @@ def show_settings():
                                      if 'indicators' in st.session_state: del st.session_state.indicators
                                      if 'results' in st.session_state: del st.session_state.results
                                  except Exception as e:
-                                     st.error(f"Erro ao excluir indicadores e resultados: {e}")
+                                     st.error(f"Erro ao excluir indicadores e resultados: {e}") # Mantém este print
                                      conn.rollback()
                                  finally:
-                                     cur.close()
-                                     conn.close()
-                          # Reseta o estado de confirmação
+                                     if cur is not None: cur.close()
+                                     if conn is not None: conn.close()
+                         # Reseta o estado de confirmação
                          st.session_state.confirm_limpar_tudo = False
                          if "confirm_limpar_tudo_btn" in st.session_state: del st.session_state.confirm_limpar_tudo_btn
                          if "cancel_limpar_tudo_btn" in st.session_state: del st.session_state.cancel_limpar_tudo_btn
                          st.rerun() # Reroda para atualizar a UI
 
     st.markdown('</div>', unsafe_allow_html=True)
-def save_users(users_data):
-    print("DEBUG: [save_users] Iniciando função save_users.") # DEBUG 1
-    conn = get_db_connection()
-    if conn:
-        print("DEBUG: [save_users] Conexão com DB obtida com sucesso.") # DEBUG 2
-        cur = None # Initialize cursor to None
-        try:
-            cur = conn.cursor()
-            print("DEBUG: [save_users] Cursor do DB obtido.") # DEBUG 3
-
-            # As linhas abaixo foram removidas pois o usuário 'streamlit' não tem permissão para SET session_replication_role
-            # e não são estritamente necessárias graças ao ON DELETE CASCADE na FK de usuario_setores.
-            # print("DEBUG: [save_users] Desabilitando verificações de chave estrangeira.") # DEBUG 4 - Removido
-            # cur.execute("SET session_replication_role = 'replica';") # Removido
-
-            # Limpa as tabelas de usuários e setores ANTES de inserir os dados restaurados
-            # A exclusão de 'usuarios' com ON DELETE CASCADE em 'usuario_setores' já limpa as entradas relacionadas.
-            # Mas deletar usuario_setores explicitamente primeiro é uma camada extra de segurança.
-            print("DEBUG: [save_users] Limpando tabela usuario_setores.") # DEBUG 5
-            cur.execute("DELETE FROM usuario_setores;")
-            print("DEBUG: [save_users] Tabela usuario_setores limpa.") # DEBUG 6
-
-            print("DEBUG: [save_users] Limpando tabela usuarios.") # DEBUG 7
-            cur.execute("DELETE FROM usuarios;")
-            print("DEBUG: [save_users] Tabela usuarios limpa.") # DEBUG 8
-
-            # A linha abaixo foi removida
-            # print("DEBUG: [save_users] Reabilitando verificações de chave estrangeira.") # DEBUG 9 - Removido
-            # cur.execute("SET session_replication_role = 'origin';") # Removido
-
-            # Prepara listas para inserção em massa
-            user_records = []
-            sector_records = []
-
-            print(f"DEBUG: [save_users] Processando {len(users_data)} usuários para inserção.") # DEBUG 10
-            for username, data in users_data.items():
-                # Prepara dados para a tabela usuarios
-                password_hash = data.get("password", "")
-                tipo = data.get("tipo", "Visualizador")
-                nome_completo = data.get("nome_completo", "") # Garante string vazia se None
-                email = data.get("email", "") # Garante string vazia se None
-                 # Use data_criacao do dicionário se existir, senão CURRENT_TIMESTAMP via COALESCE no INSERT
-                data_criacao_str = data.get("data_criacao")
-                data_criacao_dt = datetime.fromisoformat(data_criacao_str) if data_criacao_str else None
-
-                user_records.append((
-                    username,
-                    password_hash,
-                    tipo,
-                    nome_completo,
-                    email,
-                    data_criacao_dt # Pode ser datetime object ou None
-                ))
-                print(f"DEBUG: [save_users] Preparado registro para usuario '{username}'.") # DEBUG 11
-
-                # Prepara dados para a tabela usuario_setores
-                setores = data.get("setores", [])
-                for setor in setores:
-                    sector_records.append((username, setor))
-                    print(f"DEBUG: [save_users] Preparado setor '{setor}' para usuario '{username}'.") # DEBUG 12
 
 
-            # --- Inserir dados de usuários ---
-            print(f"DEBUG: [save_users] Inserindo {len(user_records)} registros na tabela usuarios.") # DEBUG 13
-            if user_records:
-                 # Usa COALESCE para definir data_criacao para CURRENT_TIMESTAMP se o valor for None
-                sql_insert_users = """
-                    INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email, data_criacao)
-                    VALUES (%s, %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP));
-                """
-                cur.executemany(sql_insert_users, user_records)
-                print("DEBUG: [save_users] Inserção em massa em usuarios concluída.") # DEBUG 14
-            else:
-                 print("DEBUG: [save_users] Nao ha registros de usuarios para inserir.") # DEBUG 15
-
-
-            # --- Inserir dados de setores ---
-            print(f"DEBUG: [save_users] Inserindo {len(sector_records)} registros na tabela usuario_setores.") # DEBUG 16
-            if sector_records:
-                sql_insert_sectors = "INSERT INTO usuario_setores (username, setor) VALUES (%s, %s);"
-                cur.executemany(sql_insert_sectors, sector_records)
-                print("DEBUG: [save_users] Inserção em massa em usuario_setores concluída.") # DEBUG 17
-            else:
-                 print("DEBUG: [save_users] Nao ha registros de setores para inserir.") # DEBUG 18
-
-
-            print("DEBUG: [save_users] Realizando commit da transacao.") # DEBUG 19
-            conn.commit() # Confirma a transação
-            print("DEBUG: [save_users] Commit concluido.") # DEBUG 20
-
-            print("DEBUG: [save_users] Usuários e setores salvos/sincronizados com sucesso no banco de dados. Retornando True.") # DEBUG 21
-            return True
-
-        except psycopg2.Error as e:
-            print(f"DEBUG: [save_users] ERRO DB: Erro ao salvar usuários no banco de dados: {e}") # DEBUG E1 (DB Error)
-            if conn:
-                conn.rollback() # Reverte a transação em caso de erro
-                print("DEBUG: [save_users] Rollback concluido.") # DEBUG R1
-            return False
-        except Exception as e: # Captura outros tipos de erro Python/lógica
-             print(f"DEBUG: [save_users] ERRO GERAL: Erro inesperado durante o salvamento de usuários: {e}") # DEBUG E2 (General Error)
-             if conn:
-                conn.rollback() # Reverte a transação
-                print("DEBUG: [save_users] Rollback concluido.") # DEBUG R2
-             return False
-
-        finally:
-            # Ensure cursor and connection are closed safely
-            print("DEBUG: [save_users] Executando finally block.") # DEBUG F1
-            if cur is not None:
-                try:
-                    cur.close()
-                    print("DEBUG: [save_users] Cursor fechado.") # DEBUG F2
-                except Exception as e:
-                     print(f"DEBUG: [save_users] Erro ao fechar cursor: {e}") # DEBUG F3
-
-            if conn is not None:
-                 try:
-                    # Check if connection is still open before closing
-                    # (It might have been closed in an exception handler)
-                    if not conn.closed:
-                         conn.close()
-                         print("DEBUG: [save_users] Conexão DB fechada.") # DEBUG F4
-                    else:
-                         print("DEBUG: [save_users] Conexão DB já estava fechada.") # DEBUG F5
-                 except Exception as e:
-                     print(f"DEBUG: [save_users] Erro ao fechar conexão DB: {e}") # DEBUG F6
-
-    else:
-        print("DEBUG: [save_users] ERRO CONEXAO: Nao foi possivel obter conexao com o banco de dados para salvar usuarios. Retornando False.") # DEBUG E3 (Connection Error)
-        return False
-
-def delete_user(username, user_performed):
-    """Exclui um usuário do banco de dados."""
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor()
-            # A exclusão na tabela usuarios deve ser suficiente,
-            # pois a chave estrangeira em 'usuario_setores' tem ON DELETE CASCADE
-            cur.execute("DELETE FROM usuarios WHERE username = %s;", (username,))
-            conn.commit()
-            log_user_action("Usuário excluído", username, user_performed) # Log
-            # Recarrega a lista de usuários no estado da sessão após exclusão bem-sucedida
-            # Note: users = load_users() dentro show_user_management será chamado no próximo rerun
-            return True
-        except psycopg2.Error as e:
-            print(f"Erro ao excluir usuário do banco de dados: {e}")
-            st.error(f"Erro ao excluir usuário: {e}") # Exibe erro no Streamlit
-            conn.rollback()
-            return False
-        finally:
-            cur.close()
-            conn.close()
-    return False
-
-
+# Função show_user_management sem DEBUG prints
 def show_user_management(SETORES):
     """Mostra a página de gerenciamento de usuários."""
     st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
@@ -3275,7 +3247,7 @@ def show_user_management(SETORES):
         # Input para selecionar MÚLTIPLOS setores (usando st.multiselect)
         # O setor "Todos" não faz sentido para Operadores. Admins e Visualizadores não precisam de setores específicos para ver tudo, mas o multiselect pode ser usado para representação ou futuros filtros.
         # Vamos oferecer todos os setores no multiselect.
-        user_sectors_new = st.multiselect("Setores", options=SETORES, default=[Ala A], help="Selecione os setores que este usuário poderá gerenciar ou visualizar (para Operadores) ou apenas para referência (para Administradores/Visualizadores).") # Seleção múltipla de setores
+        user_sectors_new = st.multiselect("Setores", options=SETORES, default=[], help="Selecione os setores que este usuário poderá gerenciar ou visualizar (para Operadores) ou apenas para referência (para Administradores/Visualizadores).") # Seleção múltipla de setores
         st.markdown("#### Informações de Acesso")
         col1, col2, col3 = st.columns(3)
         with col1: login = st.text_input("Login", placeholder="Digite o login para acesso ao sistema")
@@ -3616,11 +3588,44 @@ def show_user_management(SETORES):
                 })
             # Cria DataFrame e gera link de download
             df_export = pd.DataFrame(export_data)
-            df_export.rename(columns={'Variação': 'Variação (%)'}, inplace=True) # Renomeia a coluna de variação
+            # df_export.rename(columns={'Variação': 'Variação (%)'}, inplace=True) # Não tem Variação em usuários
             download_link = get_download_link(df_export, "usuarios_sistema.xlsx")
             st.markdown(download_link, unsafe_allow_html=True) # Exibe o link de download
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+def delete_user(username, user_performed):
+    """Exclui um usuário do banco de dados."""
+    conn = get_db_connection()
+    if conn:
+        cur = None
+        try:
+            cur = conn.cursor()
+            # A exclusão na tabela usuarios deve ser suficiente,
+            # pois a chave estrangeira em 'usuario_setores' tem ON DELETE CASCADE
+            cur.execute("DELETE FROM usuarios WHERE username = %s;", (username,))
+            conn.commit()
+            log_user_action("Usuário excluído", username, user_performed) # Log
+            # Recarrega a lista de usuários no estado da sessão após exclusão bem-sucedida
+            # Note: users = load_users() dentro show_user_management será chamado no próximo rerun
+            return True
+        except psycopg2.Error as e:
+            print(f"Erro ao excluir usuário do banco de dados: {e}") # Mantém este print
+            st.error(f"Erro ao excluir usuário: {e}") # Exibe erro no Streamlit
+            conn.rollback()
+            return False
+        except Exception as e:
+             print(f"Erro inesperado ao excluir usuário: {e}") # Mantém este print
+             st.error(f"Erro inesperado ao excluir usuário: {e}") # Exibe erro no Streamlit
+             conn.rollback()
+             return False
+        finally:
+            if cur is not None: cur.close()
+            if conn is not None: conn.close()
+    return False
+
+
 def logout():
     """Realiza o logout do usuário."""
     # Limpa todo o estado da sessão
@@ -3640,12 +3645,12 @@ def generate_key(key_file):
         try:
             with open(key_file, "wb") as kf:
                 kf.write(key)
-            print(f"Chave de criptografia gerada em {key_file}")
+            print(f"Chave de criptografia gerada em {key_file}") # Mantém este print
         except Exception as e:
-             print(f"Erro ao gerar ou salvar chave de criptografia: {e}")
-             # st.error(f"Erro ao gerar ou salvar chave de criptografia: {e}") # Evita st.error aqui para não aparecer fora do contexto UI
+             print(f"Erro ao gerar ou salvar chave de criptografia: {e}") # Mantém este print
              return None # Retorna None em caso de erro
         return key
+    # print(f"Chave de criptografia '{key_file}' já existe.") # Removido print de debug desnecessário
     return None # Retorna None se a chave já existia
 
 
@@ -3655,12 +3660,10 @@ def load_key(key_file):
         with open(key_file, "rb") as kf:
             return kf.read()
     except FileNotFoundError:
-        print(f"Arquivo de chave não encontrado: {key_file}. Gere a chave primeiro.")
-        # st.error(f"Arquivo de chave não encontrado: {key_file}. Gere a chave primeiro.") # Evita st.error aqui
+        print(f"Arquivo de chave não encontrado: {key_file}. Gere a chave primeiro.") # Mantém este print
         return None
     except Exception as e:
-         print(f"Erro ao carregar chave de criptografia: {e}")
-         # st.error(f"Erro ao carregar chave de criptografia: {e}") # Evita st.error aqui
+         print(f"Erro ao carregar chave de criptografia: {e}") # Mantém este print
          return None
 
 
@@ -3675,8 +3678,7 @@ def initialize_cipher(key_file):
 def backup_data(cipher, tipo_backup="user"):
     """Cria um arquivo de backup criptografado com todos os dados do DB."""
     if not cipher:
-        print("Objeto de criptografia não inicializado. Backup cancelado.")
-        # st.error("Objeto de criptografia não inicializado. Backup cancelado.") # Evita st.error aqui
+        print("Objeto de criptografia não inicializado. Backup cancelado.") # Mantém este print
         return None
 
     # Carrega dados de TODAS as tabelas
@@ -3691,8 +3693,7 @@ def backup_data(cipher, tipo_backup="user"):
             "user_log": load_user_log()
         }
     except Exception as e:
-         print(f"Erro ao carregar dados do DB para backup: {e}")
-         # st.error(f"Erro ao carregar dados do DB para backup: {e}") # Evita st.error aqui
+         print(f"Erro ao carregar dados do DB para backup: {e}") # Mantém este print
          return None
 
 
@@ -3702,8 +3703,7 @@ def backup_data(cipher, tipo_backup="user"):
 
         encrypted_data = cipher.encrypt(all_data_str) # Criptografa os bytes
     except Exception as e:
-         print(f"Erro ao serializar ou criptografar dados para backup: {e}")
-         # st.error(f"Erro ao serializar ou criptografar dados para backup: {e}") # Evita st.error aqui
+         print(f"Erro ao serializar ou criptografar dados para backup: {e}") # Mantém este print
          return None
 
 
@@ -3728,21 +3728,18 @@ def backup_data(cipher, tipo_backup="user"):
         log_backup_action("Backup criado", os.path.basename(BACKUP_FILE), user_performing_backup) # Registra no log
         return BACKUP_FILE # Retorna o caminho do arquivo criado
     except Exception as e:
-        print(f"Erro ao salvar o arquivo de backup: {e}")
-        # st.error(f"Erro ao salvar o arquivo de backup: {e}") # Evita st.error aqui
+        print(f"Erro ao salvar o arquivo de backup: {e}") # Mantém este print
         return None # Retorna None em caso de error
 
 
 def restore_data(backup_file_path, cipher):
     """Restaura os dados a partir de um arquivo de backup criptografado para o DB."""
     if not cipher:
-        print("Objeto de criptografia não inicializado. Restauração cancelada.")
-        # st.error("Objeto de criptografia não inicializado. Restauração cancelada.") # Evita st.error aqui
+        print("Objeto de criptografia não inicializado. Restauração cancelada.") # Mantém este print
         return False
 
     if not os.path.exists(backup_file_path):
-         print(f"Arquivo de backup não encontrado: {backup_file_path}")
-         # st.error(f"Arquivo de backup não encontrado: {backup_file_path}") # Evita st.error aqui
+         print(f"Arquivo de backup não encontrado: {backup_file_path}") # Mantém este print
          return False
 
     try:
@@ -3753,16 +3750,17 @@ def restore_data(backup_file_path, cipher):
         restored_data = json.loads(decrypted_data_str) # Carrega os dados do JSON
 
     except Exception as e:
-        print(f"Erro ao ler, descriptografar ou carregar dados do backup '{backup_file_path}': {e}")
-        st.error(f"Erro ao processar o arquivo de backup: {e}. Verifique se o arquivo não está corrompido e se a chave de criptografia está correta.")
+        print(f"Erro ao ler, descriptografar ou carregar dados do backup '{backup_file_path}': {e}") # Mantém este print
+        st.error(f"Erro ao processar o arquivo de backup: {e}. Verifique se o arquivo não está corrompido e se a chave de criptografia está correta.") # Mantém este print
         return False
 
 
     conn = get_db_connection()
     if not conn:
-        st.error("Não foi possível conectar ao banco de dados para restaurar os dados.")
+        st.error("Não foi possível conectar ao banco de dados para restaurar os dados.") # Mantém este print
         return False
 
+    cur = None
     try:
         cur = conn.cursor()
 
@@ -3786,9 +3784,27 @@ def restore_data(backup_file_path, cipher):
         users_to_insert = restored_data.get("users", {})
         if users_to_insert:
             # Cria lista de tuplas para inserção na tabela usuarios
-            user_records = [(u, d.get("password", ""), d.get("tipo", "Visualizador"), d.get("nome_completo", ""), d.get("email", "")) for u, d in users_to_insert.items()]
-            sql_insert_users = "INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email) VALUES (%s, %s, %s, %s, %s);"
-            cur.executemany(sql_insert_users, user_records)
+            user_records = []
+            for u, d in users_to_insert.items():
+                 # Ajusta para lidar com valores None na data_criacao e garantir None para campos vazios
+                 data_criacao_str = d.get("data_criacao")
+                 data_criacao_dt = datetime.fromisoformat(data_criacao_str) if data_criacao_str else None
+                 nome_completo = d.get("nome_completo", "")
+                 email = d.get("email", "")
+
+                 user_records.append((
+                     u, d.get("password", ""), d.get("tipo", "Visualizador"),
+                     nome_completo if nome_completo else None, # Insere None se string vazia
+                     email if email else None, # Insere None se string vazia
+                     data_criacao_dt # datetime object ou None
+                 ))
+
+            if user_records: # Verifica se há registros para inserir
+                 sql_insert_users = """
+                    INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email, data_criacao)
+                    VALUES (%s, %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP));
+                """
+                 cur.executemany(sql_insert_users, user_records)
 
             # Cria lista de tuplas para inserção na tabela usuario_setores
             sector_records = []
@@ -3801,19 +3817,24 @@ def restore_data(backup_file_path, cipher):
                 sql_insert_sectors = "INSERT INTO usuario_setores (username, setor) VALUES (%s, %s);"
                 cur.executemany(sql_insert_sectors, sector_records)
 
+
         # --- Inserir dados de indicadores ---
         indicators_to_insert = restored_data.get("indicators", [])
         if indicators_to_insert:
             indicator_records = []
             for i in indicators_to_insert:
-                 # Ajusta para lidar com valores None na data_criacao/atualizacao
-                 data_criacao_dt = datetime.fromisoformat(i["data_criacao"]) if i.get("data_criacao") else None
-                 data_atualizacao_dt = datetime.fromisoformat(i["data_atualizacao"]) if i.get("data_atualizacao") else None
+                 # Ajusta para lidar com valores None na data_criacao/atualizacao e garantir None para campos vazios
+                 data_criacao_str = i.get("data_criacao")
+                 data_criacao_dt = datetime.fromisoformat(data_criacao_str) if data_criacao_str else None
+                 data_atualizacao_str = i.get("data_atualizacao")
+                 data_atualizacao_dt = datetime.fromisoformat(data_atualizacao_str) if data_atualizacao_str else None
 
                  indicator_records.append((
                      i.get("id"), i.get("nome"), i.get("objetivo"), i.get("formula"),
-                     Json(i.get("variaveis", {})), i.get("unidade"), i.get("meta"),
-                     i.get("comparacao"), i.get("tipo_grafico"), i.get("responsavel"),
+                     Json(i.get("variaveis", {})), i.get("unidade", "") if i.get("unidade") is not None else None, # Garante None se string vazia para permitir NULL
+                     i.get("meta"),
+                     i.get("comparacao"), i.get("tipo_grafico"),
+                     i.get("responsavel", "") if i.get("responsavel") is not None else None, # Garante None se string vazia
                      data_criacao_dt, data_atualizacao_dt
                  ))
 
@@ -3832,24 +3853,31 @@ def restore_data(backup_file_path, cipher):
             result_records = []
             for r in results_to_insert:
                  # Converte data_referencia de string para datetime
-                 try: data_referencia_dt = datetime.fromisoformat(r.get("data_referencia"))
-                 except (ValueError, TypeError): data_referencia_dt = None # Ignora se data inválida
+                 try: data_referencia_str = r.get("data_referencia")
+                 except (ValueError, TypeError): data_referencia_str = None # Ignora se data inválida
+
+                 data_referencia_dt = datetime.fromisoformat(data_referencia_str) if data_referencia_str else None
+
                  if data_referencia_dt: # Só adiciona se a data for válida
                      # Ajusta para lidar com valores None nas datas de criação/atualização e usuário/status
-                     data_criacao_dt = datetime.fromisoformat(r.get("data_criacao")) if r.get("data_criacao") else None
-                     data_atualizacao_dt = datetime.fromisoformat(r.get("data_atualizacao")) if r.get("data_atualizacao") else None
+                     data_criacao_str = r.get("data_criacao")
+                     data_criacao_dt = datetime.fromisoformat(data_criacao_str) if data_criacao_str else None
+                     data_atualizacao_str = r.get("data_atualizacao")
+                     data_atualizacao_dt = datetime.fromisoformat(data_atualizacao_str) if data_atualizacao_str else None
+                     observacao = r.get("observacao", "")
+
 
                      result_records.append((
                          r.get("indicator_id"),
                          data_referencia_dt, # datetime object
                          r.get("resultado"),
                          Json(r.get("valores_variaveis", {})),
-                         r.get("observacao"),
+                         observacao if observacao else None, # Insere None se string vazia
                          Json(r.get("analise_critica", {})),
                          data_criacao_dt, # datetime object ou None
                          data_atualizacao_dt, # datetime object ou None
-                         r.get("usuario"),
-                         r.get("status_analise")
+                         r.get("usuario", "Sistema Restaurado") if r.get("usuario") is not None else 'Sistema Restaurado', # Garante default se None
+                         r.get("status_analise", "N/A") if r.get("status_analise") is not None else 'N/A' # Garante default se None
                      ))
 
             if result_records: # Verifica se há registros para inserir
@@ -3857,7 +3885,7 @@ def restore_data(backup_file_path, cipher):
                     INSERT INTO resultados (indicator_id, data_referencia, resultado, valores_variaveis, observacao, analise_critica, data_criacao, data_atualizacao, usuario, status_analise)
                     VALUES (%s, %s, %s, %s, %s, %s,
                             COALESCE(%s, CURRENT_TIMESTAMP), COALESCE(%s, CURRENT_TIMESTAMP),
-                            COALESCE(%s, 'Sistema Restaurado'), COALESCE(%s, 'N/A'));
+                            %s, %s);
                 """
                  cur.executemany(sql_insert_results, result_records)
 
@@ -3874,7 +3902,6 @@ def restore_data(backup_file_path, cipher):
         # --- Inserir dados de logs ---
         # Decidimos limpar logs durante a restauração e apenas logar a restauração em si.
         # Se quiser restaurar logs antigos, insira-os aqui de forma semelhante às outras tabelas.
-        # Exemplo (descomente e ajuste se necessário):
         # log_backup_to_insert = restored_data.get("backup_log", [])
         # if log_backup_to_insert:
         #      log_records = [(datetime.fromisoformat(e["timestamp"]), e["action"], e["file_name"], e["user"]) for e in log_backup_to_insert]
@@ -3895,17 +3922,22 @@ def restore_data(backup_file_path, cipher):
         return True # Retorna True se a restauração foi bem-sucedida
 
     except Exception as e:
-        print(f"Erro durante a inserção de dados restaurados no DB: {e}")
-        st.error(f"Erro durante a inserção de dados restaurados no banco de dados: {e}. A restauração pode estar incompleta.")
-        conn.rollback() # Reverte as operações em caso de error
+        print(f"Erro durante a inserção de dados restaurados no DB: {e}") # Mantém este print
+        st.error(f"Erro durante a inserção de dados restaurados no banco de dados: {e}. A restauração pode estar incompleta.") # Mantém este print
+        if conn: conn.rollback() # Reverte as operações em caso de error
         return False
     finally:
-        if conn:
+        if cur is not None:
+            try: cur.close()
+            except: pass # Ignora se já estiver fechado
+
+        if conn is not None:
              # Garante que as verificações de chave estrangeira sejam reativadas mesmo em caso de erro
-            try: cur.execute("SET session_replication_role = 'origin';")
-            except: pass # Ignora se já estiver em 'origin' ou a conexão falhou
-            cur.close()
-            conn.close()
+            try: cur_temp = conn.cursor(); cur_temp.execute("SET session_replication_role = 'origin';"); conn.commit(); cur_temp.close()
+            except: pass # Ignora se já estiver em 'origin' ou a conexão falhou/fechou
+            try:
+                if not conn.closed: conn.close()
+            except: pass # Ignora se a conexão já estiver fechada
 
 
 def agendar_backup(cipher):
@@ -3934,7 +3966,7 @@ def backup_job(cipher, tipo_backup):
     """Função executada pelo agendador de backup."""
     # Esta função roda no thread agendado.
     # Não use st.* aqui. Use print() para debug no console.
-    print(f"Executando job de backup agendado ({tipo_backup})...")
+    print(f"Executando job de backup agendado ({tipo_backup})...") # Mantém este print
     try:
         # Chama a função de backup
         # Note que log_backup_action dentro de backup_data tenta usar st.session_state.username.
@@ -3942,7 +3974,7 @@ def backup_job(cipher, tipo_backup):
         # A função log_backup_action foi modificada para usar um fallback ('Sistema Agendado').
         backup_file = backup_data(cipher, tipo_backup=tipo_backup)
         if backup_file:
-            print(f"Backup automático criado: {backup_file}")
+            print(f"Backup automático criado: {backup_file}") # Mantém este print
             # Atualiza a data do último backup nas configurações (carrega, atualiza, salva)
             config = load_config()
             config["last_backup_date"] = datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -3950,9 +3982,9 @@ def backup_job(cipher, tipo_backup):
             # Mantém apenas os últimos N backups
             keep_last_backups("backups", 5) # Mantém 5 backups automáticos
         else:
-            print("Falha ao criar o backup automático.")
+            print("Falha ao criar o backup automático.") # Mantém este print
     except Exception as e:
-        print(f"Erro durante a execução do job de backup: {e}")
+        print(f"Erro durante a execução do job de backup: {e}") # Mantém este print
 
 
 def keep_last_backups(BACKUP_DIR, num_backups):
@@ -3972,9 +4004,9 @@ def keep_last_backups(BACKUP_DIR, num_backups):
         for backup_to_remove in backups[num_backups:]:
             try:
                 os.remove(backup_to_remove)
-                print(f"Backup removido por política de retenção: {backup_to_remove}")
+                print(f"Backup removido por política de retenção: {backup_to_remove}") # Mantém este print
             except Exception as e:
-                print(f"Erro ao remover backup antigo: {backup_to_remove} - {e}")
+                print(f"Erro ao remover backup antigo: {backup_to_remove} - {e}") # Mantém este print
 
 
 # --- Função Principal da Aplicação Streamlit ---
@@ -4000,6 +4032,7 @@ def main():
 
     # --- Configuração de Criptografia para Backups ---
     # Garante que a chave exista e inicializa o objeto cipher
+    # generate_key e initialize_cipher já imprimem erros se necessário
     generate_key(KEY_FILE)
     cipher = initialize_cipher(KEY_FILE)
 
@@ -4088,6 +4121,7 @@ def main():
             if st.button("🚪", help="Fazer logout"):
                 logout() # Chama a função de logout
 
+
     # Define os itens do menu baseados no tipo de usuário
     if user_type == "Administrador":
         menu_items = ["Dashboard", "Criar Indicador", "Editar Indicador", "Preencher Indicador", "Visão Geral", "Configurações", "Gerenciar Usuários"]
@@ -4128,7 +4162,7 @@ def main():
     # Footer da sidebar
     st.sidebar.markdown("""
     <div class="sidebar-footer">
-        <p style="margin:0;">Portal de Indicadores v1.4.0</p> {/* Versão atualizada */}
+        <p style="margin:0;">Portal de Indicadores v1.4.0</p>
         <p style="margin:3px 0 0 0;">© 2025 Todos os direitos reservados</p>
         <p style="margin:0; font-size:10px;">Desenvolvido por FIA Softworks</p>
     </div>
@@ -4198,9 +4232,9 @@ def main():
              backup_thread.daemon = True # Garante que o thread não impeça o encerramento da aplicação
              backup_thread.start()
              st.session_state.backup_thread = backup_thread # Salva o thread no estado da sessão para verificações futuras
-             print("Thread de backup agendado iniciado.") # Log no console
+             print("Thread de backup agendado iniciado.") # Mantém este print no console do servidor
         else:
-             print("Não foi possível inicializar o cipher. Agendamento de backup NÃO iniciado.") # Log no console
+             print("Não foi possível inicializar o cipher. Agendamento de backup NÃO iniciado.") # Mantém este print
 
 
 # Ponto de entrada da aplicação Streamlit
