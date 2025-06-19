@@ -300,7 +300,7 @@ def save_users(users_data):
             # Deletar usuários que existem no DB mas não na lista de salvamento
             users_to_delete = existing_users_in_db - current_users_to_save
             for username_to_delete in users_to_delete:
-                # O ON DELETE CASCADE na chave estrangeira de usuario_setores garantirá que as entradas de setor sejam deletadas primeiro
+                 # O ON DELETE CASCADE na chave estrangeira de usuario_setores garantirá que as entradas de setor sejam deletadas primeiro
                 cur.execute("DELETE FROM usuarios WHERE username = %s;", (username_to_delete,))
                 print(f"Usuário '{username_to_delete}' removido do banco de dados.")
 
@@ -1422,7 +1422,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS):
                     except Exception as e:
                          st.error(f"❌ Erro inesperado ao validar a fórmula: {e}"); return # Impede a criação
 
-                with st.spinner("Criando indicador...\ Academia FIA Softworks"):
+                with st.spinner("Criando indicador..."):
                     time.sleep(0.5) # Pequeno delay para simular processamento
                     indicators = load_indicators()
                     # Verifica se já existe um indicador com o mesmo nome
@@ -1447,7 +1447,6 @@ def create_indicator(SETORES, TIPOS_GRAFICOS):
                         indicators.append(new_indicator) # Adiciona à lista em memória
                         save_indicators(indicators) # Salva a lista no banco de dados
                         log_indicator_action("Indicador criado", new_indicator["id"], st.session_state.username) # Registra no log
-
                         st.success(f"✅ Indicador '{nome_submitted}' criado com sucesso!")
                         time.sleep(2) # Aguarda um pouco antes de limpar e rerodar
 
@@ -1525,6 +1524,36 @@ def edit_indicator(SETORES, TIPOS_GRAFICOS):
              for var in vars_to_remove:
                  if var in st.session_state.current_var_descriptions:
                      del st.session_state.current_var_descriptions[var]
+             # Reseta valores de teste ao mudar de indicador
+             st.session_state.current_variable_values = {}
+             st.session_state.current_test_result = None # Adiciona estado para o resultado do teste na edição
+
+        # Chave para o estado de confirmação de exclusão (única por indicador)
+        delete_state_key = f"delete_state_{selected_indicator['id']}"
+        if delete_state_key not in st.session_state:
+            st.session_state[delete_state_key] = None # 'None', 'confirming', 'deleting'
+
+        # Formulário principal de edição
+        with st.form(key=f"edit_form_{selected_indicator['id']}"): # Chave única para o formulário
+            # Campos de entrada, preenchidos com os valores atuais do indicador
+            nome = st.text_input("Nome do Indicador", value=selected_indicator["nome"])
+            objetivo = st.text_area("Objetivo", value=selected_indicator["objetivo"])
+            unidade = st.text_input("Unidade do Resultado", value=selected_indicator.get("unidade", ""), placeholder="Ex: %", key=f"edit_unidade_input_{selected_indicator['id']}")
+            formula = st.text_input("Fórmula de Cálculo (Use letras para variáveis, ex: A+B/C)", value=selected_indicator.get("formula", ""), placeholder="Ex: (DEMISSOES / TOTAL_FUNCIONARIOS) * 100", key=f"edit_formula_input_{selected_indicator['id']}")
+            # Verifica se as variáveis na fórmula mudaram e atualiza o estado da sessão
+            current_detected_vars = sorted(list(set(re.findall(r'[a-zA-Z]+', formula))))
+            if st.session_state.current_formula_vars != current_detected_vars:
+                 st.session_state.current_formula_vars = current_detected_vars
+                 # Mantém descrições existentes para variáveis que ainda estão na nova fórmula
+                 new_var_descriptions = {}
+                 for var in current_detected_vars:
+                      new_var_descriptions[var] = st.session_state.current_var_descriptions.get(var, "")
+                 st.session_state.current_var_descriptions = new_var_descriptions
+                 # Remove descrições de variáveis que não estão mais na nova fórmula
+                 vars_to_remove = [v for v in st.session_state.current_var_descriptions if v not in st.session_state.current_formula_vars]
+                 for var in vars_to_remove:
+                     if var in st.session_state.current_var_descriptions:
+                         del st.session_state.current_var_descriptions[var]
 
 
             st.markdown("---")
@@ -1795,7 +1824,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
         st.subheader(f"Informações do Indicador: {selected_indicator['nome']}")
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown(f"**Objetivo:** {selected_indicator['objetivo']}\ Academia FIA Softworks")
+            st.markdown(f"**Objetivo:** {selected_indicator['objetivo']}")
             if selected_indicator.get("formula"):
                 st.markdown(f"**Fórmula de Cálculo:** `{selected_indicator['formula']}`")
             else:
@@ -2415,13 +2444,14 @@ def show_dashboard(SETORES, TEMA_PADRAO):
             meta = float(ind.get("meta", 0.0)) # Garante que a meta é float
 
             try:
-                last_result_float = float(last_result)
-                if ind["comparacao"] == "Maior é melhor":
-                    if last_result_float >= meta: indicators_above_target += 1
-                    else: indicators_below_target += 1
-                else: # Menor é melhor
-                    if last_result_float <= meta: indicators_above_target += 1
-                    else: indicators_below_target += 1
+                last_result_float = float(last_result) # Tenta converter resultado para float
+
+                if ind["comparacao"] == "Maior é melhor": status_meta = "Acima da Meta" if last_result_float >= meta else "Abaixo da Meta"
+                else: status_meta = "Acima da Meta" if last_result_float <= meta else "Abaixo da Meta"
+
+                if status_meta == "Acima da Meta": indicators_above_target += 1
+                else: indicators_below_target += 1
+
             except (TypeError, ValueError):
                  # Se o resultado não é numérico, conta como N/A para status de meta
                  indicators_na_status += 1
@@ -2432,8 +2462,8 @@ def show_dashboard(SETORES, TEMA_PADRAO):
     col1, col2, col3, col4 = st.columns(4)
     with col1: st.markdown(f"""<div style="background-color:#f8f9fa; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:#1E88E5;">{total_indicators}</h3><p style="margin:0;">Total de Indicadores</p></div>""", unsafe_allow_html=True)
     with col2: st.markdown(f"""<div style="background-color:#f8f9fa; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:#1E88E5;">{indicators_with_results}</h3><p style="margin:0;">Com Resultados</p></div>""", unsafe_allow_html=True)
-    with col3: st.markdown(f"""<div style="background-color:#26A69A; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:white;">{indicators_above_target}</h3><p style="margin:0; color:white;">Acima/Dentro da Meta</p></div>""", unsafe_allow_html=True) # Texto ajustado
-    with col4: st.markdown(f"""<div style="background-color:#FF5252; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:white;">{indicators_below_target}</h3><p style="margin:0; color:white;">Abaixo/Fora da Meta</p></div>""" if indicators_below_target > 0 else f"""<div style="background-color:#f8f9fa; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:#37474F;">{indicators_below_target}</h3><p style="margin:0;">Abaixo/Fora da Meta</p></div>""", unsafe_allow_html=True) # Texto e cor ajustados
+    with col3: st.markdown(f"""<div style="background-color:#26A69A; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:white;">{indicators_above_target}</h3><p style="margin:0; color:white;">Acima/Dentro da Meta</p></div>""", unsafe_allow_html=True)
+    with col4: st.markdown(f"""<div style="background-color:#FF5252; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:white;">{indicators_below_target}</h3><p style="margin:0; color:white;">Abaixo/Fora da Meta</p></div>""" if indicators_below_target > 0 else f"""<div style="background-color:#f8f9fa; padding:15px; border-radius:5px; text-align:center;"><h3 style="margin:0; color:#37474F;">{indicators_below_target}</h3><p style="margin:0;">Abaixo/Fora da Meta</p></div>""", unsafe_allow_html=True)
 
 
     st.subheader("Status dos Indicadores")
@@ -2441,7 +2471,7 @@ def show_dashboard(SETORES, TEMA_PADRAO):
     status_data = {"Status": ["Acima/Dentro da Meta", "Abaixo/Fora da Meta", "Sem Resultados", "Status N/A"], "Quantidade": [indicators_above_target, indicators_below_target, total_indicators - indicators_with_results, indicators_na_status]} # Inclui N/A
     df_status = pd.DataFrame(status_data)
     # Mapeamento de cores para os status
-    status_color_map = {"Acima/Dentro da Meta": "#26A69A", "Abaixo/Fora da Meta": "#FF5252", "Sem Resultados": "#9E9E9E", "Status N/A": "#607D8B"} # Adicionado cor para N/A
+    status_color_map = {"Acima/Dentro da Meta": "#26A69A", "Abaixo/Fora da Meta": "#FF5252", "Sem Resultados": "#9E9E9E", "Status N/A": "#607D8B"}
 
     # Cria o gráfico de pizza - filtra status com quantidade 0 para não aparecer na legenda
     df_status_filtered = df_status[df_status['Quantidade'] > 0]
@@ -2575,7 +2605,7 @@ def show_dashboard(SETORES, TEMA_PADRAO):
                     # Tenta converter resultado e meta para float, lida com erros resultando em N/A status
                     df_hist["status"] = df_hist.apply(lambda row:
                          "Acima da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float)) and ((float(row["resultado"]) >= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Maior é melhor") or (float(row["resultado"]) <= float(ind.get("meta", 0.0)) and ind.get("comparacao", "Maior é melhor") == "Menor é melhor"))))
-                         else "Abaixo da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float))) # Corrected parenthesis
+                         else "Abaixo da Meta" if (isinstance(row["resultado"], (int, float)) and isinstance(ind.get("meta"), (int, float))))
                          else "N/A" # Status N/A se resultado ou meta não são numéricos
                     , axis=1)
 
@@ -2886,7 +2916,7 @@ def show_overview():
             status_counts = df_overview["Status"].value_counts().reset_index()
             status_counts.columns = ["Status", "Quantidade"]
              # Mapeamento de cores para os status
-            status_color_map = {"Acima da Meta": "#26A69A", "Abaixo da Meta": "#FF5252", "Sem Resultados": "#9E9E9E", "N/A": "#607D8B"} # Adicionado cor para N/A
+            status_color_map = {"Acima da Meta": "#26A69A", "Abaixo da Meta": "#FF5252", "Sem Resultados": "#9E9E9E", "N/A": "#607D8B"}
             fig_status = px.pie(status_counts, names="Status", values="Quantidade", title="Distribuição de Status dos Indicadores", color="Status", color_discrete_map=status_color_map)
             st.plotly_chart(fig_status, use_container_width=True)
 
@@ -3039,8 +3069,9 @@ def show_settings():
                          st.info("Limpeza cancelada.")
                          st.rerun()
                 elif st.session_state.confirm_limpar_resultados: # Se está no estado de confirmação E clicou no botão de confirmar
-                     if st.session_state.get("confirm_limpar_resultados_btn"):
-                         with st.spinner("Limpando resultados...\ Academia FIA Softworks"):
+                    # Verifica se o botão de confirmação foi clicado
+                    if st.session_state.get("confirm_limpar_resultados_btn"):
+                         with st.spinner("Limpando resultados..."):
                              conn = get_db_connection()
                              if conn:
                                  try:
@@ -3056,7 +3087,7 @@ def show_settings():
                                  finally:
                                      cur.close()
                                      conn.close()
-                         # Reseta o estado de confirmação
+                          # Reseta o estado de confirmação
                          st.session_state.confirm_limpar_resultados = False
                          if "confirm_limpar_resultados_btn" in st.session_state: del st.session_state.confirm_limpar_resultados_btn
                          if "cancel_limpar_resultados_btn" in st.session_state: del st.session_state.cancel_limpar_resultados_btn
@@ -3079,7 +3110,7 @@ def show_settings():
                          st.info("Exclusão total cancelada.")
                          st.rerun()
                 elif st.session_state.confirm_limpar_tudo: # Se está no estado de confirmação E clicou no botão de confirmar
-                     if st.session_state.get("confirm_limpar_tudo_btn"):
+                    if st.session_state.get("confirm_limpar_tudo_btn"):
                          with st.spinner("Limpando tudo..."):
                              conn = get_db_connection()
                              if conn:
@@ -3098,7 +3129,7 @@ def show_settings():
                                  finally:
                                      cur.close()
                                      conn.close()
-                         # Reseta o estado de confirmação
+                          # Reseta o estado de confirmação
                          st.session_state.confirm_limpar_tudo = False
                          if "confirm_limpar_tudo_btn" in st.session_state: del st.session_state.confirm_limpar_tudo_btn
                          if "cancel_limpar_tudo_btn" in st.session_state: del st.session_state.cancel_limpar_tudo_btn
@@ -3144,7 +3175,6 @@ def show_user_management(SETORES):
         # O setor "Todos" não faz sentido para Operadores. Admins e Visualizadores não precisam de setores específicos para ver tudo, mas o multiselect pode ser usado para representação ou futuros filtros.
         # Vamos oferecer todos os setores no multiselect.
         user_sectors_new = st.multiselect("Setor(es) Associado(s)", options=SETORES, default=[], help="Selecione os setores que este usuário poderá gerenciar ou visualizar (para Operadores) ou apenas para referência (para Administradores/Visualizadores).") # Seleção múltipla de setores
-
         st.markdown("#### Informações de Acesso")
         col1, col2 = st.columns(2)
         with col1: login = st.text_input("Login", placeholder="Digite o login para acesso ao sistema")
@@ -3306,7 +3336,7 @@ def show_user_management(SETORES):
                     # Botão de editar - define estado para mostrar o formulário de edição
                     if st.button("✏️ Editar", key=f"edit_{login}"):
                         st.session_state[f"editing_{login}"] = True # Estado para edição deste usuário
-                        st.session_state[f"edit_user_data_{login}\ Academia FIA Softworks"] = users[login] # Salva os dados atuais no estado
+                        st.session_state[f"edit_user_data_{login}"] = users[login] # Salva os dados atuais no estado
                         st.rerun() # Reroda para mostrar o form
                 with col2:
                      # Botão de excluir - define estado para confirmar exclusão
@@ -3327,7 +3357,6 @@ def show_user_management(SETORES):
                         col1, col2 = st.columns(2)
                         with col1: new_nome = st.text_input("Nome Completo", value=user_to_edit.get('nome_completo', ''), key=f"new_nome_{login}")
                         with col2: new_email = st.text_input("Email", value=user_to_edit.get('email', ''), key=f"new_email_{login}")
-
                         st.markdown("#### Configurações de Permissão")
                         # Selectbox para o tipo de usuário (preenchido com o tipo atual)
                         current_type_index = [
@@ -3593,7 +3622,7 @@ def backup_data(cipher, tipo_backup="user"):
     try:
         with open(BACKUP_FILE, "wb") as backup_file:
             backup_file.write(encrypted_data) # Escreve os dados criptografados no arquivo
-        # Log da ação de backup (usando st.session_state.username, que só existe na sessão Streamlit)
+        # Log da ação de backup (usa st.session_state.username, que só existe na sessão Streamlit)
         # Esta logagem pode falhar se o backup for agendado em um thread sem contexto de sessão.
         # Considerar passar o username como argumento para a função agendada ou usar um placeholder.
         user_performing_backup = getattr(st.session_state, 'username', 'Sistema Agendado') # Pega username se disponível, senão usa 'Sistema Agendado'
@@ -3952,7 +3981,7 @@ def main():
             <div style="background-color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #e0e0e0;">
                 <p style="margin:0; font-weight:bold;">{username}</p>
                 <p style="margin:0; font-size:12px; color:#666;">{user_type}</p>
-                {'<p style="margin:0; font-size:12px; color:#666;">Setores: ' + sectors_display + '</p>' if user_type == "Operador" or sectors_display == "Todos" else ''} {/* FIX: Removido as chaves externas {} */}
+                {'<p style="margin:0; font-size:12px; color:#666;">Setores: ' + sectors_display + '</p>' if user_type == "Operador" or sectors_display == "Todos" else ''}
             </div>
             """, unsafe_allow_html=True)
         with col2:
@@ -4005,7 +4034,6 @@ def main():
         <p style="margin:0; font-size:10px;">Desenvolvido por FIA Softworks</p>
     </div>
     """, unsafe_allow_html=True)
-
 
     # --- Conteúdo Principal (Renderiza a página selecionada) ---
     # Cada função de página agora verifica as permissões internamente, mas a sidebar já restringe.
