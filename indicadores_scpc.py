@@ -3088,67 +3088,89 @@ def show_settings():
 def save_users(users_data):
     """
     Salva os usuários no banco de dados PostgreSQL.
-    Esta função sincroniza o dicionário 'users_data' com as tabelas 'usuarios' e 'usuario_setores'.
-    Ela insere novos usuários, atualiza os existentes e remove os que não estão mais na lista,
-    gerenciando as associações de setores na tabela usuario_setores.
+    Esta função sincroniza o dicionário 'users_data' com as tabelas 'usuarios' e 'usuario_setores',
+    limpando as tabelas e reinserindo todos os dados fornecidos.
     """
     conn = get_db_connection()
     if conn:
         try:
             cur = conn.cursor()
 
-            # Obter usuários existentes no DB
-            cur.execute("SELECT username FROM usuarios;")
-            existing_users_in_db = {row[0] for row in cur.fetchall()}
+            # Desabilita temporariamente as verificações de chave estrangeira para facilitar a limpeza
+            cur.execute("SET session_replication_role = 'replica';")
 
-            current_users_to_save = set(users_data.keys())
+            # Limpa as tabelas de usuários e setores ANTES de inserir os dados restaurados
+            # Limpa primeiro a tabela de setores que depende da tabela de usuários
+            cur.execute("DELETE FROM usuario_setores;")
+            cur.execute("DELETE FROM usuarios;")
+
+            # Habilita novamente as verificações de chave estrangeira
+            cur.execute("SET session_replication_role = 'origin';")
+
+            # Prepara listas para inserção em massa
+            user_records = []
+            sector_records = []
 
             for username, data in users_data.items():
+                # Prepara dados para a tabela usuarios
                 password_hash = data.get("password", "")
                 tipo = data.get("tipo", "Visualizador")
-                nome_completo = data.get("nome_completo", "")
-                email = data.get("email", "")
-                setores = data.get("setores", []) # Lista de setores
+                nome_completo = data.get("nome_completo", "") # Garante string vazia se None
+                email = data.get("email", "") # Garante string vazia se None
+                 # Use data_criacao do dicionário se existir, senão CURRENT_TIMESTAMP via COALESCE no INSERT
+                data_criacao_str = data.get("data_criacao")
+                data_criacao_dt = datetime.fromisoformat(data_criacao_str) if data_criacao_str else None
 
-                # Inserir ou atualizar usuário na tabela usuarios
-                if username in existing_users_in_db:
-                    cur.execute("""
-                        UPDATE usuarios
-                        SET password_hash = %s, tipo = %s, nome_completo = %s, email = %s
-                        WHERE username = %s;
-                    """, (password_hash, tipo, nome_completo, email, username))
-                else:
-                    cur.execute("""
-                        INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email)
-                        VALUES (%s, %s, %s, %s, %s);
-                    """, (username, password_hash, tipo, nome_completo, email))
+                user_records.append((
+                    username,
+                    password_hash,
+                    tipo,
+                    nome_completo, # Insere string vazia para permitir NULL no DB
+                    email, # Insere string vazia para permitir NULL no DB
+                    data_criacao_dt # Pode ser datetime object ou None
+                ))
 
-                # Gerenciar setores na tabela usuario_setores
-                # 1. Deletar setores existentes para este usuário
-                cur.execute("DELETE FROM usuario_setores WHERE username = %s;", (username,))
-                # 2. Inserir os novos setores
-                if setores: # Somente insere se a lista de setores não for vazia
-                    sector_records = [(username, setor) for setor in setores]
-                    sql_insert_sectors = "INSERT INTO usuario_setores (username, setor) VALUES (%s, %s);"
-                    cur.executemany(sql_insert_sectors, sector_records)
+                # Prepara dados para a tabela usuario_setores
+                setores = data.get("setores", [])
+                for setor in setores:
+                    sector_records.append((username, setor))
 
-            # Deletar usuários que existem no DB mas não na lista de salvamento
-            users_to_delete = existing_users_in_db - current_users_to_save
-            for username_to_delete in users_to_delete:
-                 # O ON DELETE CASCADE na chave estrangeira de usuario_setores garantirá que as entradas de setor sejam deletadas primeiro
-                cur.execute("DELETE FROM usuarios WHERE username = %s;", (username_to_delete,))
-                print(f"Usuário '{username_to_delete}' removido do banco de dados.")
+            # --- Inserir dados de usuários ---
+            if user_records:
+                 # Usa COALESCE para definir data_criacao para CURRENT_TIMESTAMP se o valor for None
+                sql_insert_users = """
+                    INSERT INTO usuarios (username, password_hash, tipo, nome_completo, email, data_criacao)
+                    VALUES (%s, %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP));
+                """
+                cur.executemany(sql_insert_users, user_records)
 
-            conn.commit()
+            # --- Inserir dados de setores ---
+            if sector_records:
+                sql_insert_sectors = "INSERT INTO usuario_setores (username, setor) VALUES (%s, %s);"
+                cur.executemany(sql_insert_sectors, sector_records)
+
+
+            conn.commit() # Confirma a transação
+            print("Usuários e setores salvos/sincronizados com sucesso no banco de dados.")
             return True
+
         except psycopg2.Error as e:
             print(f"Erro ao salvar usuários no banco de dados: {e}")
-            conn.rollback()
+            conn.rollback() # Reverte a transação em caso de erro
             return False
+        except Exception as e: # Captura outros tipos de erro Python/lógica
+             print(f"Erro inesperado durante o salvamento de usuários: {e}")
+             conn.rollback() # Reverte a transação
+             return False
+
         finally:
-            cur.close()
-            conn.close()
-    return False
+            if conn:
+                cur.close()
+                conn.close()
+    else:
+        print("Erro: Não foi possível obter conexão com o banco de dados para salvar usuários.")
+        return False
+
 
 # A função delete_user - Sem alterações lógicas necessárias, mas incluída para completude
 def delete_user(username, user_performed):
