@@ -3425,14 +3425,14 @@ def show_user_management(SETORES):
                 st.markdown('<div class="centered-buttons-container">', unsafe_allow_html=True)
 
                 # Usa colunas dentro do div wrapper para posicionar lado a lado
-                col1, col2, col3, col4 = st.columns([2,1,1,2])
-                with col2:
+                col1, col2, col3, col4 = st.columns([1,1,4,4])
+                with col1:
                     # Botão de editar - define estado para mostrar o formulário de edição
                     if st.button("✏️ Editar", key=f"edit_{login}"):
                         st.session_state[f"editing_{login}"] = True # Estado para edição deste usuário
                         st.session_state[f"edit_user_data_{login}"] = users[login] # Salva os dados atuais no estado
                         st.rerun() # Reroda para mostrar o form
-                with col3:
+                with col2:
                      # Botão de excluir - define estado para confirmar exclusão
                     if st.button("🗑️ Excluir", key=f"del_{login}"):
                         st.session_state[f"deleting_{login}"] = True # Estado para exclusão deste usuário
