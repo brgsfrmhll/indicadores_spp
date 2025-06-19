@@ -3083,34 +3083,39 @@ def show_settings():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-
-# A função save_users - Sem alterações lógicas necessárias para este problema específico, mas incluída para completude
 def save_users(users_data):
-    """
-    Salva os usuários no banco de dados PostgreSQL.
-    Esta função sincroniza o dicionário 'users_data' com as tabelas 'usuarios' e 'usuario_setores',
-    limpando as tabelas e reinserindo todos os dados fornecidos.
-    """
+    print("DEBUG: [save_users] Iniciando função save_users.") # DEBUG 1
     conn = get_db_connection()
     if conn:
+        print("DEBUG: [save_users] Conexão com DB obtida com sucesso.") # DEBUG 2
+        cur = None # Initialize cursor to None
         try:
             cur = conn.cursor()
+            print("DEBUG: [save_users] Cursor do DB obtido.") # DEBUG 3
 
             # Desabilita temporariamente as verificações de chave estrangeira para facilitar a limpeza
+            print("DEBUG: [save_users] Desabilitando verificações de chave estrangeira.") # DEBUG 4
             cur.execute("SET session_replication_role = 'replica';")
 
             # Limpa as tabelas de usuários e setores ANTES de inserir os dados restaurados
             # Limpa primeiro a tabela de setores que depende da tabela de usuários
+            print("DEBUG: [save_users] Limpando tabela usuario_setores.") # DEBUG 5
             cur.execute("DELETE FROM usuario_setores;")
+            print("DEBUG: [save_users] Tabela usuario_setores limpa.") # DEBUG 6
+
+            print("DEBUG: [save_users] Limpando tabela usuarios.") # DEBUG 7
             cur.execute("DELETE FROM usuarios;")
+            print("DEBUG: [save_users] Tabela usuarios limpa.") # DEBUG 8
 
             # Habilita novamente as verificações de chave estrangeira
+            print("DEBUG: [save_users] Reabilitando verificações de chave estrangeira.") # DEBUG 9
             cur.execute("SET session_replication_role = 'origin';")
 
             # Prepara listas para inserção em massa
             user_records = []
             sector_records = []
 
+            print(f"DEBUG: [save_users] Processando {len(users_data)} usuários para inserção.") # DEBUG 10
             for username, data in users_data.items():
                 # Prepara dados para a tabela usuarios
                 password_hash = data.get("password", "")
@@ -3125,17 +3130,21 @@ def save_users(users_data):
                     username,
                     password_hash,
                     tipo,
-                    nome_completo, # Insere string vazia para permitir NULL no DB
-                    email, # Insere string vazia para permitir NULL no DB
+                    nome_completo,
+                    email,
                     data_criacao_dt # Pode ser datetime object ou None
                 ))
+                print(f"DEBUG: [save_users] Preparado registro para usuario '{username}'.") # DEBUG 11
 
                 # Prepara dados para a tabela usuario_setores
                 setores = data.get("setores", [])
                 for setor in setores:
                     sector_records.append((username, setor))
+                    print(f"DEBUG: [save_users] Preparado setor '{setor}' para usuario '{username}'.") # DEBUG 12
+
 
             # --- Inserir dados de usuários ---
+            print(f"DEBUG: [save_users] Inserindo {len(user_records)} registros na tabela usuarios.") # DEBUG 13
             if user_records:
                  # Usa COALESCE para definir data_criacao para CURRENT_TIMESTAMP se o valor for None
                 sql_insert_users = """
@@ -3143,36 +3152,66 @@ def save_users(users_data):
                     VALUES (%s, %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP));
                 """
                 cur.executemany(sql_insert_users, user_records)
+                print("DEBUG: [save_users] Inserção em massa em usuarios concluída.") # DEBUG 14
+            else:
+                 print("DEBUG: [save_users] Nao ha registros de usuarios para inserir.") # DEBUG 15
+
 
             # --- Inserir dados de setores ---
+            print(f"DEBUG: [save_users] Inserindo {len(sector_records)} registros na tabela usuario_setores.") # DEBUG 16
             if sector_records:
                 sql_insert_sectors = "INSERT INTO usuario_setores (username, setor) VALUES (%s, %s);"
                 cur.executemany(sql_insert_sectors, sector_records)
+                print("DEBUG: [save_users] Inserção em massa em usuario_setores concluída.") # DEBUG 17
+            else:
+                 print("DEBUG: [save_users] Nao ha registros de setores para inserir.") # DEBUG 18
 
 
+            print("DEBUG: [save_users] Realizando commit da transacao.") # DEBUG 19
             conn.commit() # Confirma a transação
-            print("Usuários e setores salvos/sincronizados com sucesso no banco de dados.")
+            print("DEBUG: [save_users] Commit concluido.") # DEBUG 20
+
+            print("DEBUG: [save_users] Usuários e setores salvos/sincronizados com sucesso no banco de dados. Retornando True.") # DEBUG 21
             return True
 
         except psycopg2.Error as e:
-            print(f"Erro ao salvar usuários no banco de dados: {e}")
-            conn.rollback() # Reverte a transação em caso de erro
+            print(f"DEBUG: [save_users] ERRO DB: Erro ao salvar usuários no banco de dados: {e}") # DEBUG E1 (DB Error)
+            if conn:
+                conn.rollback() # Reverte a transação em caso de erro
+                print("DEBUG: [save_users] Rollback concluido.") # DEBUG R1
             return False
         except Exception as e: # Captura outros tipos de erro Python/lógica
-             print(f"Erro inesperado durante o salvamento de usuários: {e}")
-             conn.rollback() # Reverte a transação
+             print(f"DEBUG: [save_users] ERRO GERAL: Erro inesperado durante o salvamento de usuários: {e}") # DEBUG E2 (General Error)
+             if conn:
+                conn.rollback() # Reverte a transação
+                print("DEBUG: [save_users] Rollback concluido.") # DEBUG R2
              return False
 
         finally:
-            if conn:
-                cur.close()
-                conn.close()
+            # Ensure cursor and connection are closed safely
+            print("DEBUG: [save_users] Executando finally block.") # DEBUG F1
+            if cur is not None:
+                try:
+                    cur.close()
+                    print("DEBUG: [save_users] Cursor fechado.") # DEBUG F2
+                except Exception as e:
+                     print(f"DEBUG: [save_users] Erro ao fechar cursor: {e}") # DEBUG F3
+
+            if conn is not None:
+                 try:
+                    # Check if connection is still open before closing
+                    # (It might have been closed in an exception handler)
+                    if not conn.closed:
+                         conn.close()
+                         print("DEBUG: [save_users] Conexão DB fechada.") # DEBUG F4
+                    else:
+                         print("DEBUG: [save_users] Conexão DB já estava fechada.") # DEBUG F5
+                 except Exception as e:
+                     print(f"DEBUG: [save_users] Erro ao fechar conexão DB: {e}") # DEBUG F6
+
     else:
-        print("Erro: Não foi possível obter conexão com o banco de dados para salvar usuários.")
+        print("DEBUG: [save_users] ERRO CONEXAO: Nao foi possivel obter conexao com o banco de dados para salvar usuarios. Retornando False.") # DEBUG E3 (Connection Error)
         return False
-
-
-# A função delete_user - Sem alterações lógicas necessárias, mas incluída para completude
 def delete_user(username, user_performed):
     """Exclui um usuário do banco de dados."""
     conn = get_db_connection()
