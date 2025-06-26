@@ -3952,8 +3952,8 @@ def show_admin():
 
 def show_dashboard():
     """
-    Renderiza um dashboard abrangente para visualização de notificações.
-    Inclui métricas chave, gráficos e uma lista detalhada, filtrável, pesquisável e paginada de notificações.
+    Renders a comprehensive dashboard for notification visualization.
+    Includes key metrics, charts, and a detailed, filterable, searchable, and paginated list of notifications.
     """
     st.markdown("<h1 class='main-header'>📊 Dashboard de Notificações</h1>", unsafe_allow_html=True)
     st.info("Visão geral e detalhada de todas as notificações registradas no sistema.")
@@ -4089,6 +4089,7 @@ def show_dashboard():
         all_nnc_options = FORM_DATA.classificacao_nnc
         display_nnc_options_with_all = [all_option_text] + all_nnc_options
         current_nnc_selection_raw = st.session_state.get("dashboard_filter_nnc_select", [all_option_text])
+
         if all_option_text in current_nnc_selection_raw and len(current_nnc_selection_raw) > 1:
             default_nnc_selection_for_display = [all_option_text]
         elif not current_nnc_selection_raw:
@@ -4131,7 +4132,6 @@ def show_dashboard():
         elif not st.session_state.dashboard_filter_priority:
             st.session_state.dashboard_filter_priority = [all_option_text]
         applied_priority_filters = [p for p in st.session_state.dashboard_filter_priority if p != all_option_text]
-
         date_start_default = st.session_state.dashboard_filter_date_start or (
             min(pd.to_datetime([n['created_at'] for n in all_notifications if
                                 'created_at' in n])).date() if all_notifications else None
@@ -4217,3 +4217,135 @@ def show_dashboard():
     def get_sort_value(notif, sort_key):
         if sort_key == 'id':
             return notif.get('id', 0)
+        elif sort_key == 'created_at':
+            return datetime.fromisoformat(notif.get('created_at', '1900-01-01T00:00:00'))
+        elif sort_key == 'title':
+            return notif.get('title', '')
+        elif sort_key == 'location':
+            return notif.get('location', '')
+        elif sort_key == 'classification.prioridade':
+            priority_value = notif.get('classification', {}).get('prioridade', 'Baixa')
+            priority_order_val = {'Crítica': 4, 'Alta': 3, 'Média': 2, 'Baixa': 1, UI_TEXTS.text_na: 0,
+                                  UI_TEXTS.selectbox_default_prioridade_resolucao: 0}
+            return priority_order_val.get(priority_value, 0)
+        return None
+
+    actual_sort_column = st.session_state.dashboard_sort_column
+    if actual_sort_column in sort_options_map.values():
+        filtered_notifications.sort(
+            key=lambda n: get_sort_value(n, actual_sort_column),
+            reverse=not st.session_state.dashboard_sort_ascending
+        )
+
+    st.write(f"**Notificações Encontradas: {len(filtered_notifications)}**")
+
+    items_per_page_options = [5, 10, 20, 50]
+    items_per_page_display_options = [UI_TEXTS.selectbox_items_per_page_placeholder] + [str(x) for x in
+                                                                                        items_per_page_options]
+
+    if 'dashboard_items_per_page' not in st.session_state: st.session_state.dashboard_items_per_page = 10
+
+    selected_items_per_page_display = st.selectbox(
+        UI_TEXTS.selectbox_items_per_page_label,
+        options=items_per_page_display_options,
+        index=items_per_page_display_options.index(str(st.session_state.dashboard_items_per_page)) if str(
+            st.session_state.dashboard_items_per_page) in items_per_page_display_options else 0,
+        key="dashboard_items_per_page_select"
+    )
+    if selected_items_per_page_display != UI_TEXTS.selectbox_items_per_page_placeholder:
+        st.session_state.dashboard_items_per_page = int(selected_items_per_page_display)
+    else:
+        st.session_state.dashboard_items_per_page = 10
+
+    total_pages = (
+                          len(filtered_notifications) + st.session_state.dashboard_items_per_page - 1) // st.session_state.dashboard_items_per_page
+    if total_pages == 0: total_pages = 1
+
+    if 'dashboard_current_page' not in st.session_state: st.session_state.dashboard_current_page = 1
+    st.session_state.dashboard_current_page = st.number_input(
+        "Página:", min_value=1, max_value=total_pages, value=st.session_state.dashboard_current_page,
+        key="dashboard_current_page_input"
+    )
+
+    start_idx = (st.session_state.dashboard_current_page - 1) * st.session_state.dashboard_items_per_page
+    end_idx = start_idx + st.session_state.dashboard_items_per_page
+    paginated_notifications = filtered_notifications[start_idx:end_idx]
+
+    if not paginated_notifications:
+        st.info("Nenhuma notificação encontrada com os filtros e busca aplicados.")
+    else:
+        for notification in paginated_notifications:
+            status_class = f"status-{notification.get('status', UI_TEXTS.text_na).replace('_', '-')}"
+            created_at_str = datetime.fromisoformat(notification['created_at']).strftime('%d/%m/%Y %H:%M:%S')
+            current_status_display = status_mapping.get(notification.get('status', UI_TEXTS.text_na),
+                                                        notification.get('status', UI_TEXTS.text_na).replace('_',
+                                                                                                             ' ').title())
+
+            # Get deadline details for display in dashboard list
+            classif_info = notification.get('classification', {})
+            deadline_date_str = classif_info.get('deadline_date')
+            deadline_html = ""
+            if deadline_date_str:
+                deadline_date_formatted = datetime.fromisoformat(deadline_date_str).strftime('%d/%m/%Y')
+                deadline_status = get_deadline_status(deadline_date_str)
+                deadline_html = f" | <strong class='{deadline_status['class']}'>Prazo: {deadline_date_formatted} ({deadline_status['text']})</strong>"
+
+            st.markdown(f"""
+                <div class="notification-card">
+                    <h4>#{notification.get('id', UI_TEXTS.text_na)} - {notification.get('title', UI_TEXTS.text_na)}</h4>
+                    <p><strong>Status:</strong> <span class="{status_class}">{current_status_display}</span> {deadline_html}</p>
+                    <p><strong>Local:</strong> {notification.get('location', UI_TEXTS.text_na)} | <strong>Criada em:</strong> {created_at_str}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with st.expander(f"👁️ Visualizar Detalhes - Notificação #{notification.get('id', UI_TEXTS.text_na)}"):
+                display_notification_full_details(notification,
+                                                  st.session_state.user.get(
+                                                      'id') if st.session_state.authenticated else None,
+                                                  st.session_state.user.get(
+                                                      'username') if st.session_state.authenticated else None)
+
+
+def main():
+    """Main function to run the Streamlit application."""
+    init_database()
+
+    if 'authenticated' not in st.session_state: st.session_state.authenticated = False
+    if 'user' not in st.session_state: st.session_state.user = None
+    if 'page' not in st.session_state: st.session_state.page = 'create_notification'
+
+    if 'initial_classification_state' not in st.session_state: st.session_state.initial_classification_state = {}
+    if 'review_classification_state' not in st.session_state: st.session_state.review_classification_state = {}
+    if 'current_initial_classification_id' not in st.session_state: st.session_state.current_initial_classification_id = None
+    if 'current_review_classification_id' not in st.session_state: st.session_state.current_review_classification_id = None
+    # NOVO: Adiciona o estado para o formulário de aprovação
+    if 'approval_form_state' not in st.session_state: st.session_state.approval_form_state = {}
+
+    show_sidebar()
+
+    restricted_pages = ['dashboard', 'classification', 'execution', 'approval', 'admin']
+    if st.session_state.page in restricted_pages and not st.session_state.authenticated:
+        st.warning("⚠️ Você precisa estar logado para acessar esta página.")
+        st.session_state.page = 'create_notification'
+        st.rerun()
+
+    if st.session_state.page == 'create_notification':
+        show_create_notification()
+    elif st.session_state.page == 'dashboard':
+        show_dashboard()
+    elif st.session_state.page == 'classification':
+        show_classification()
+    elif st.session_state.page == 'execution':
+        show_execution()
+    elif st.session_state.page == 'approval':
+        show_approval()
+    elif st.session_state.page == 'admin':
+        show_admin()
+    else:
+        st.error("Página solicitada inválida. Redirecionando para a página inicial.")
+        st.session_state.page = 'create_notification'
+        st.rerun()
+
+
+if __name__ == "__main__":
+    main()
