@@ -4075,35 +4075,106 @@ def main():
     # Estilização CSS customizada para o Streamlit
     st.markdown("""
     <style>
-        /* Oculta elementos padrão do Streamlit */
-        #MainMenu, header, footer {display: none;}
-        /* Estilo do container principal */
-        .main { background-color: #f8f9fa; padding: 1rem; }
-        /* Oculta a toolbar padrão do Streamlit */
-        [data-testid="stToolbar"] { display: none !important; }
-         /* Remove borda do container da view */
-        [data-testid="stAppViewContainer"] { border: none !important; }
-        /* Oculta footer e MainMenu novamente por segurança */
-        footer { display: none !important; }
-        #MainMenu { visibility: hidden !important; }
-        header { display: none !important; } /* Já oculto acima, redundante mas seguro */
+    /* Oculta elementos padrão do Streamlit */
+    #MainMenu, header, footer {
+        display: none;
+    }
 
-        /* Estilo para os cards de conteúdo */
-        .dashboard-card { background-color: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        /* Estilo para títulos */
-        h1, h2, h3 { color: #1E88E5; }
-        /* Estilo para a sidebar */
-        section[data-testid="stSidebar"] { background-color: #f8f9fa; }
-        /* Estilo para os botões na sidebar */
-        section[data-testid="stSidebar"] button { width: 100%; border-radius: 5px; text-align: left; margin-bottom: 5px; height: 40px; padding: 0 15px; font-size: 14px; }
-        /* Estilo para o botão ativo na sidebar */
-        .active-button button { background-color: #e3f2fd !important; border-left: 3px solid #1E88E5 !important; color: #1E88E5 !important; font-weight: 500 !important; }
-        /* Ajusta padding no topo da sidebar */
-        section[data-testid="stSidebar"] > div:first-child { padding-top: 0; }
-        /* Estilo para o container do perfil do usuário na sidebar */
-        .user-profile { background-color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #e0e0e0; }
-        /* Estilo para o footer da sidebar (fixo na parte inferior) */
-        .sidebar-footer { position: fixed; bottom: 0; left: 0; width: 100%; background-color: #f8f9fa; border-top: 1px solid #e0e0e0; padding: 10px; font-size: 12px; color: #666; text-align: center; }
+    /* Estilo do container principal */
+    .main {
+        background-color: #f8f9fa;
+        padding: 1rem;
+    }
+
+    /* Oculta a toolbar padrão do Streamlit */
+    [data-testid="stToolbar"] {
+        display: none !important;
+    }
+
+    /* Remove borda do container da view */
+    [data-testid="stAppViewContainer"] {
+        border: none !important;
+    }
+
+    /* Oculta footer e MainMenu novamente por segurança */
+    footer {
+        display: none !important;
+    }
+
+    #MainMenu {
+        visibility: hidden !important;
+    }
+
+    header {
+        display: none !important; /* Já oculto acima, redundante mas seguro */
+    }
+
+    /* Estilo para os cards de conteúdo */
+    .dashboard-card {
+        background-color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    /* Estilo para títulos */
+    h1, h2, h3 {
+        color: #1E88E5;
+    }
+
+    /* Estilo para a sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+    }
+
+    /* Estilo para os botões na sidebar */
+    section[data-testid="stSidebar"] button {
+        width: 100%;
+        border-radius: 5px;
+        text-align: left;
+        margin-bottom: 5px;
+        height: 40px;
+        padding: 0 15px;
+        font-size: 14px;
+    }
+
+    /* Estilo para o botão ativo na sidebar */
+    .active-button button {
+        background-color: #e3f2fd !important;
+        border-left: 3px solid #1E88E5 !important;
+        color: #1E88E5 !important;
+        font-weight: 500 !important;
+    }
+
+    /* Ajusta padding no topo da sidebar */
+    section[data-testid="stSidebar"] > div:first-child {
+        padding-top: 0;
+    }
+
+    /* Estilo para o container do perfil do usuário na sidebar */
+    .user-profile {
+        background-color: white;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        border: 1px solid #e0e0e0;
+    }
+
+    /* Estilo para o footer da sidebar (fixo na parte inferior) */
+    .sidebar-footer {
+        position: absolute; /* Posiciona em relação ao pai mais próximo com position: relative, absolute ou fixed */
+        bottom: 0;          /* Cola na parte inferior do pai */
+        width: 100%;        /* Ocupa 100% da largura do pai */
+        /* Remova 'left: 0;' pois 'width: 100%' já vai alinhar à esquerda do pai */
+
+        background-color: #f8f9fa;
+        border-top: 1px solid #e0e0e0;
+        padding: 10px;
+        font-size: 12px;
+        color: #666;
+        text-align: center;
+    }
     </style>
     """, unsafe_allow_html=True)
 
