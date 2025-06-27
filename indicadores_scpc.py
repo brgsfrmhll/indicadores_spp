@@ -4251,7 +4251,7 @@ def main():
     st.sidebar.markdown("""
     <div class="sidebar-footer">
         <p style="margin:0;">Portal de Indicadores v1.4.0</p>
-        <p style="margin:3px 0 0 0;">© 2025 Portal de Indicadores - Santa Casa | Todos os direitos reservados</p>
+        <p style="margin:3px 0 0 0;">© 2025 Portal de Indicadores - Santa Casa</p>
         <p style="margin:0; font-size:10px;">Desenvolvido por FIA Softworks</p>
     </div>
     """, unsafe_allow_html=True)
