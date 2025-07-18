@@ -4133,7 +4133,7 @@ def main():
         width: 100%;
         border-radius: 5px;
         text-align: left;
-        margin-bottom: 5px;
+        margin-bottom: 2px;
         height: 40px;
         padding: 0 15px;
         font-size: 14px;
