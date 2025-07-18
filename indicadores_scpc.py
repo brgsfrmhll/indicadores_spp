@@ -581,8 +581,6 @@ def save_results(results_data):
                     # print(f"Resultado para indicador '{ind_id}' e data '{data_ref_str}' removido do banco de dados.") # Removido DEBUG print
                 except (ValueError, TypeError):
                     print(f"Erro ao tentar deletar resultado com data inválida: '{data_ref_str}'. Ignorando.") # Manter log de erro
-
-
             conn.commit()
             return True
         except psycopg2.Error as e:
@@ -1258,7 +1256,7 @@ def show_login_page():
                             st.error("Usuário ou senha incorretos.")
                 else:
                     st.error("Por favor, preencha todos os campos.")
-       
+        st.markdown("<p style='text-align: center; font-size: 12px; color: #78909C; margin-top: 30px;'>© 2025 Portal de Indicadores - Santa Casa</p>", unsafe_allow_html=True)
 
 def verify_credentials(username, password):
     """Verifica as credenciais do usuário diretamente do banco de dados."""
@@ -1456,7 +1454,7 @@ def create_indicator(SETORES, TIPOS_GRAFICOS):
                      st.markdown(f"**Resultado do Teste:** **{st.session_state[f'{form_prefix}test_result']:.2f}{unidade_value}**")
         else:
              st.warning("Nenhuma variável (letras) encontrada na fórmula. O resultado será um valor fixo.")
-             # Limpa variáveis relacionadas ao teste se não há variáveis na fórmula
+# Limpa variáveis relacionadas ao teste se não há variáveis na fórmula
              st.session_state[f'{form_prefix}current_formula_vars'] = []
              st.session_state[f'{form_prefix}current_var_descriptions'] = {}
              st.session_state[f'{form_prefix}sample_values'] = {}
@@ -1855,6 +1853,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
     user_sectors = st.session_state.user_sectors # Lista de setores
     user_name = st.session_state.get("username", "Usuário não identificado")
 
+
     # Filtrar indicadores para Operadores: só mostra indicadores onde o setor responsável está na lista de setores do usuário
     if user_type == "Operador":
         filtered_indicators = [ind for ind in indicators if ind["responsavel"] in user_sectors]
@@ -1866,6 +1865,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
     else:
         # Administradores e Visualizadores veem todos os indicadores
         filtered_indicators = indicators
+
 
     indicator_names = [ind["nome"] for ind in filtered_indicators]
     # Use uma chave única para o selectbox de seleção de indicador
@@ -1953,16 +1953,17 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                 # Extrai mês e ano
                 selected_month, selected_year = selected_period.month, selected_period.year if selected_period else (None, None)
 
-                calculated_result = None
-                # Verifica se o indicador tem fórmula e variáveis para o cálculo
+                calculated_result = None # Inicializa a variável local para o resultado calculado
+                
+                # Check if the indicator has a formula and variables for calculation
                 if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
                     st.markdown("#### Valores das Variáveis")
                     st.info(f"Insira os valores para calcular o resultado usando a fórmula: `{selected_indicator['formula']}`")
                     vars_to_fill = list(selected_indicator["variaveis"].items())
                     if vars_to_fill:
-                        # Inputs para os valores das variáveis
+                        # Inputs for variable values
                         variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"
-                        # Inicializa o estado da sessão para armazenar os valores dos inputs para este período/indicador
+                        # Initialize session state for storing input values for this period/indicator
                         if variable_values_key not in st.session_state:
                              st.session_state[variable_values_key] = {}
 
@@ -1970,32 +1971,37 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                         for i, (var, desc) in enumerate(vars_to_fill):
                             col_idx = i % len(cols)
                             with cols[col_idx]:
-                                # Input para cada variável, recuperando o valor do estado da sessão
+                                # Input for each variable, retrieving value from session state
                                 default_value = st.session_state[variable_values_key].get(var, 0.0)
                                 st.session_state[variable_values_key][var] = st.number_input(
                                     f"{var} ({desc or 'Sem descrição'})",
-                                    value=float(default_value), # Garante que o valor inicial seja float
+                                    value=float(default_value), # Ensure initial value is float
                                     step=0.01,
                                     format="%.2f",
-                                    key=f"var_input_{var}_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                                    key=f"var_input_{var}_{selected_indicator['id']}_{selected_period_str}" # Unique key
                                 )
+                        
+                        # --- Botões de Ação dentro do Formulário ---
+                        # Usamos colunas para posicionar os botões lado a lado
+                        col_form_buttons = st.columns(2)
+                        with col_form_buttons[0]:
+                            test_button_clicked = st.form_submit_button("✨ Calcular Resultado")
+                        with col_form_buttons[1]:
+                            submitted = st.form_submit_button("✔️ Salvar")
 
-                        # Botão para calcular o resultado usando a fórmula e os valores inseridos
-                        test_button_clicked = st.form_submit_button("✨ Calcular Resultado")
-
-                        # Chave para armazenar o resultado calculado no estado da sessão
+                        # Key to store the calculated result in the session state
                         calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
 
-                        # === INÍCIO DA CORREÇÃO: Lógica de cálculo movida para DENTRO do formulário ===
-                        if test_button_clicked:
+                        # === INÍCIO DA CORREÇÃO: Lógica de cálculo e salvamento dentro do formulário ===
+                        if test_button_clicked: # Lógica para o botão "Calcular Resultado"
                             formula_str = selected_indicator.get("formula", "")
-                            variable_values = st.session_state.get(variable_values_key, {}) # Recupera os valores preenchidos no form
+                            variable_values_from_inputs = st.session_state.get(variable_values_key, {}) # Retrieve values from inputs
 
                             if formula_str:
                                 try:
                                     formula_vars_in_string = sorted(list(set(re.findall(r'[a-zA-Z]+', formula_str))))
-                                    # Filtra variable_values para incluir apenas aquelas presentes na formula_str
-                                    filtered_variable_values = {k: v for k, v in variable_values.items() if k in formula_vars_in_string}
+                                    # Filter variable_values to include only those present in formula_str
+                                    filtered_variable_values = {k: v for k, v in variable_values_from_inputs.items() if k in formula_vars_in_string}
 
                                     var_symbols = symbols(list(filtered_variable_values.keys()))
                                     expr = sympify(formula_str, locals={s: symbols(s) for s in formula_vars_in_string})
@@ -2003,27 +2009,108 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                                     calculated_result_val = float(expr.subs(subs_dict))
 
                                     st.session_state[calculated_result_state_key] = calculated_result_val
+                                    calculated_result = calculated_result_val # Update local variable for immediate display
                                 except SympifyError as e:
                                     st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
                                     st.session_state[calculated_result_state_key] = None
+                                    calculated_result = None
                                 except ZeroDivisionError:
                                     st.error("❌ Erro ao calcular a fórmula: Divisão por zero com os valores fornecidos.")
                                     st.session_state[calculated_result_state_key] = None
+                                    calculated_result = None
                                 except Exception as e:
                                     st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
                                     st.session_state[calculated_result_state_key] = None
+                                    calculated_result = None
                             else:
                                 st.warning("⚠️ Por favor, insira uma fórmula para calcular.")
                                 st.session_state[calculated_result_state_key] = None
-                        # === FIM DA CORREÇÃO ===
+                                calculated_result = None
+                        
+                        elif submitted: # Lógica para o botão "Salvar"
+                            final_result_to_save = None
+                            values_to_save = {}
 
-                        # Exibe o resultado calculado se ele existir no estado da sessão
+                            # Determine which result to save: the calculated one (if formula-based) or the directly entered one
+                            final_result_to_save = st.session_state.get(calculated_result_state_key)
+                            values_to_save = st.session_state.get(variable_values_key, {})
+                            
+                            if final_result_to_save is None: # If clicked save but not calculated
+                                st.warning("⚠️ Por favor, calcule o resultado antes de salvar.")
+                                # No return here, let the form re-render so the user can correct
+                            else:
+                                # Format reference date to save to DB
+                                data_referencia_iso = datetime(selected_year, selected_month, 1).isoformat()
+
+                                # Collect critical analysis data (5W2H)
+                                analise_critica = {
+                                    "what": st.session_state.get(f"what_input_{selected_indicator['id']}_{selected_period_str}", ""),
+                                    "why": st.session_state.get(f"why_input_{selected_indicator['id']}_{selected_period_str}", ""),
+                                    "who": st.session_state.get(f"who_input_{selected_indicator['id']}_{selected_period_str}", ""),
+                                    "when": st.session_state.get(f"when_input_{selected_indicator['id']}_{selected_period_str}", ""),
+                                    "where": st.session_state.get(f"where_input_{selected_indicator['id']}_{selected_period_str}", ""),
+                                    "how": st.session_state.get(f"how_input_{selected_indicator['id']}_{selected_period_str}", ""),
+                                    "howMuch": st.session_state.get(f"howmuch_input_{selected_indicator['id']}_{selected_period_str}", "")
+                                }
+                                # Calculate critical analysis completion status
+                                status_analise = get_analise_status(analise_critica)
+                                analise_critica["status_preenchimento"] = status_analise # Save status in analysis
+
+                                # Create the new result object
+                                new_result = {
+                                    "indicator_id": selected_indicator["id"],
+                                    "data_referencia": data_referencia_iso,
+                                    "resultado": final_result_to_save,
+                                    "valores_variaveis": values_to_save, # Save variable values
+                                    "observacao": st.session_state.get(f"obs_input_{selected_indicator['id']}_{selected_period_str}", ""),
+                                    "analise_critica": analise_critica, # Save full critical analysis
+                                    "data_criacao": datetime.now().isoformat(),
+                                    "data_atualizacao": datetime.now().isoformat(), # Use current date for update
+                                    "usuario": user_name, # Save name of user who filled
+                                    "status_analise": status_analise # Save analysis status
+                                }
+
+                                # Load all results, remove existing result for the period (if any), and add the new/updated one
+                                all_results = load_results()
+                                all_results = [r for r in all_results if not (r["indicator_id"] == new_result["indicator_id"] and r["data_referencia"] == new_result["data_referencia"])]
+                                all_results.append(new_result)
+
+                                # Check save_results result
+                                if save_results(all_results): # Save updated list of results to DB and verify
+                                     with st.spinner("Salvando resultado..."):
+                                        st.success(f"✅ Resultado adicionado/atualizado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
+                                        time.sleep(2) # Small delay
+
+                                     # Clear session state associated with the fill form for this period/indicator
+                                     if variable_values_key in st.session_state:
+                                        del st.session_state[variable_values_key]
+                                     if calculated_result_state_key in st.session_state:
+                                        del st.session_state[calculated_result_state_key]
+                                     # Clear text inputs (observacoes and 5w2h)
+                                     # Streamlit often clears these on form submission and rerun, but we can explicitly clear if needed
+                                     # For `st.text_area`, direct state manipulation for clearing might be needed if not automatically cleared by form reset
+                                     st.session_state[f"obs_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                     st.session_state[f"what_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                     st.session_state[f"why_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                     st.session_state[f"who_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                     st.session_state[f"when_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                     st.session_state[f"where_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                     st.session_state[f"how_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                     st.session_state[f"howmuch_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+
+                                     scroll_to_top() # Scroll to top
+                                     st.rerun() # Restart application
+                                else:
+                                     st.error(f"❌ Erro ao salvar o resultado para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')} no banco de dados. Verifique o console para detalhes do erro.")
+                                     # Don't clear inputs to allow user to correct
+
+                        # Display calculated result if available in session state (after button logic)
                         if st.session_state.get(calculated_result_state_key) is not None:
                             calculated_result = st.session_state[calculated_result_state_key]
                             result_display = f"{calculated_result:.2f}{selected_indicator.get('unidade', '')}"
                             st.markdown(f"**Resultado Calculado:** **{result_display}**")
 
-                            # Compara o resultado calculado com a meta
+                            # Compare calculated result with meta
                             meta_valor = float(selected_indicator.get('meta', 0.0))
                             comparacao_tipo = selected_indicator['comparacao']
 
@@ -2038,164 +2125,142 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                                 else:
                                     st.warning(f"⚠️ Meta Não Atingida. O resultado ({result_display}) é maior que a meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
 
-                    else:
-                        # Caso o indicador tenha fórmula mas não tenha variáveis definidas
+                    else: # If indicator has formula but no variables defined
                         st.warning("O indicador tem uma fórmula, mas nenhuma variável definida. O resultado será um valor fixo.")
-                        # Input direto para o resultado neste caso especial
+                        # Direct input for result in this special case
                         resultado_input_value = st.number_input(
                             "Resultado",
                             step=0.01,
                             format="%.2f",
-                            key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                            key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}" # Unique key
                         )
-                        # Garante que o estado de variáveis e resultado calculado esteja limpo
+                        # Ensure variable state and calculated result are cleared
                         variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"
                         st.session_state[variable_values_key] = {}
                         calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
                         st.session_state[calculated_result_state_key] = None
 
-                else:
-                    # Caso o indicador NÃO tenha fórmula (preenchimento direto do resultado)
+                else: # If indicator does NOT have formula (direct result input)
                     resultado_input_value = st.number_input(
                         "Resultado",
                         step=0.01,
                         format="%.2f",
-                        key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                        key=f"direct_result_input_{selected_indicator['id']}_{selected_period_str}" # Unique key
                     )
-                    # Garante que o estado de variáveis e resultado calculado esteja limpo
+                    # Ensure variable state and calculated result are cleared
                     variable_values_key = f"variable_values_form_{selected_indicator['id']}_{selected_period_str}"
                     st.session_state[variable_values_key] = {}
                     calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
                     st.session_state[calculated_result_state_key] = None
 
-
-                # Área para observações e Análise Crítica (5W2H)
+                # Area for observations and Critical Analysis (5W2H) - These are text inputs, not buttons
                 observacoes = st.text_area(
                     "Observações (opcional)",
                     placeholder="Adicione informações relevantes sobre este resultado",
-                    key=f"obs_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                    key=f"obs_input_{selected_indicator['id']}_{selected_period_str}", # Unique key
+                    value=st.session_state.get(f"obs_input_{selected_indicator['id']}_{selected_period_str}", "")
                 )
                 st.markdown("### Análise Crítica (5W2H)")
                 st.markdown("""<div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 15px;"><p style="margin: 0; font-size: 14px;">A metodologia 5W2H ajuda a estruturar a análise crítica de forma completa, abordando todos os aspectos relevantes da situação.</p></div>""", unsafe_allow_html=True)
-                # Inputs para os campos do 5W2H
+                # Inputs for 5W2H fields
                 what = st.text_area(
                     "O que (What)",
                     placeholder="O que está acontecendo? Qual é a situação atual do indicador?",
-                    key=f"what_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                    key=f"what_input_{selected_indicator['id']}_{selected_period_str}", # Unique key
+                    value=st.session_state.get(f"what_input_{selected_indicator['id']}_{selected_period_str}", "")
                 )
                 why = st.text_area(
                     "Por que (Why)",
                     placeholder="Por que isso está acontecendo? Quais são as causas?",
-                    key=f"why_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                    key=f"why_input_{selected_indicator['id']}_{selected_period_str}", # Unique key
+                    value=st.session_state.get(f"why_input_{selected_indicator['id']}_{selected_period_str}", "")
                 )
                 who = st.text_area(
                     "Quem (Who)",
                     placeholder="Quem é responsável? Quem está envolvido?",
-                    key=f"who_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                    key=f"who_input_{selected_indicator['id']}_{selected_period_str}", # Unique key
+                    value=st.session_state.get(f"who_input_{selected_indicator['id']}_{selected_period_str}", "")
                 )
                 when = st.text_area(
                     "Quando (When)",
                     placeholder="Quando isso aconteceu? Qual é o prazo para resolução?",
-                    key=f"when_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                    key=f"when_input_{selected_indicator['id']}_{selected_period_str}", # Unique key
+                    value=st.session_state.get(f"when_input_{selected_indicator['id']}_{selected_period_str}", "")
                 )
                 where = st.text_area(
                     "Onde (Where)",
                     placeholder="Onde ocorre a situação? Em qual processo ou área?",
-                    key=f"where_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                    key=f"where_input_{selected_indicator['id']}_{selected_period_str}", # Unique key
+                    value=st.session_state.get(f"where_input_{selected_indicator['id']}_{selected_period_str}", "")
                 )
                 how = st.text_area(
                     "Como (How)",
                     placeholder="Como resolver a situação? Quais ações devem ser tomadas?",
-                    key=f"how_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                    key=f"how_input_{selected_indicator['id']}_{selected_period_str}", # Unique key
+                    value=st.session_state.get(f"how_input_{selected_indicator['id']}_{selected_period_str}", "")
                 )
                 howMuch = st.text_area(
                     "Quanto custa (How Much)",
                     placeholder="Quanto custará implementar a solução? Quais recursos são necessários?",
-                    key=f"howmuch_input_{selected_indicator['id']}_{selected_period_str}" # Chave única
+                    key=f"howmuch_input_{selected_indicator['id']}_{selected_period_str}", # Unique key
+                    value=st.session_state.get(f"howmuch_input_{selected_indicator['id']}_{selected_period_str}", "")
                 )
 
-                # Botão principal para salvar o resultado
-                submitted = st.form_submit_button("✔️ Salvar")
+                # If no formula, a direct 'Salvar' button is needed, defined here to be inside the form
+                if not (selected_indicator.get("formula") and selected_indicator.get("variaveis")):
+                    submitted = st.form_submit_button("✔️ Salvar")
+                    if submitted: # Handle direct save if no formula
+                        final_result_to_save = resultado_input_value
+                        values_to_save = {} # No variables to save
 
-            # === FIM DA CORREÇÃO: Bloco `if test_button_clicked:` anterior foi removido daqui ===
-            # (O bloco 'if test_button_clicked:' que estava aqui fora foi movido para dentro do formulário.)
+                        if final_result_to_save is not None:
+                            data_referencia_iso = datetime(selected_year, selected_month, 1).isoformat()
+                            analise_critica = {
+                                "what": what, "why": why, "who": who, "when": when,
+                                "where": where, "how": how, "howMuch": howMuch
+                            }
+                            status_analise = get_analise_status(analise_critica)
+                            analise_critica["status_preenchimento"] = status_analise
 
-            # Lógica ao clicar no botão "Salvar"
-            elif submitted:
-                final_result_to_save = None
-                values_to_save = {}
+                            new_result = {
+                                "indicator_id": selected_indicator["id"],
+                                "data_referencia": data_referencia_iso,
+                                "resultado": final_result_to_save,
+                                "valores_variaveis": values_to_save,
+                                "observacao": observacoes,
+                                "analise_critica": analise_critica,
+                                "data_criacao": datetime.now().isoformat(),
+                                "data_atualizacao": datetime.now().isoformat(),
+                                "usuario": user_name,
+                                "status_analise": status_analise
+                            }
 
-                # Determina qual resultado salvar: o calculado (se houver fórmula) ou o inserido diretamente
-                if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
-                    final_result_to_save = st.session_state.get(calculated_result_state_key)
-                    values_to_save = st.session_state.get(variable_values_key, {})
-                    if final_result_to_save is None: # Se clicou em salvar mas não calculou
-                        st.warning("⚠️ Por favor, calcule o resultado antes de salvar.")
-                        return # Para a execução se o resultado calculado for nulo
-                else:
-                    # Se não há fórmula, pega o valor do input direto
-                    final_result_to_save = resultado_input_value
-                    values_to_save = {} # Não há variáveis para salvar
+                            all_results = load_results()
+                            all_results = [r for r in all_results if not (r["indicator_id"] == new_result["indicator_id"] and r["data_referencia"] == new_result["data_referencia"])]
+                            all_results.append(new_result)
 
-                # Se temos um resultado para salvar
-                if final_result_to_save is not None:
-                    # Formata a data de referência para salvar no DB
-                    data_referencia_iso = datetime(selected_year, selected_month, 1).isoformat()
+                            if save_results(all_results):
+                                with st.spinner("Salvando resultado..."):
+                                    st.success(f"✅ Resultado adicionado/atualizado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
+                                    time.sleep(2)
+                                st.session_state[f"obs_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                st.session_state[f"what_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                st.session_state[f"why_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                st.session_state[f"who_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                st.session_state[f"when_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                st.session_state[f"where_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                st.session_state[f"how_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                st.session_state[f"howmuch_input_{selected_indicator['id']}_{selected_period_str}"] = ""
+                                scroll_to_top()
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Erro ao salvar o resultado para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')} no banco de dados. Verifique o console para detalhes do erro.")
+                        else:
+                            st.warning("⚠️ Por favor, informe o resultado antes de salvar.")
 
-                    # Coleta os dados da análise crítica
-                    analise_critica = {
-                        "what": what,
-                        "why": why,
-                        "who": who,
-                        "when": when,
-                        "where": where,
-                        "how": how,
-                        "howMuch": howMuch
-                    }
-                    # Calcula o status de preenchimento da análise crítica
-                    status_analise = get_analise_status(analise_critica)
-                    analise_critica["status_preenchimento"] = status_analise # Salva o status na análise
 
-                    # Cria o objeto do novo resultado
-                    new_result = {
-                        "indicator_id": selected_indicator["id"],
-                        "data_referencia": data_referencia_iso,
-                        "resultado": final_result_to_save,
-                        "valores_variaveis": values_to_save, # Salva os valores das variáveis
-                        "observacao": observacoes,
-                        "analise_critica": analise_critica, # Salva a análise crítica completa
-                        "data_criacao": datetime.now().isoformat(),
-                        "data_atualizacao": datetime.now().isoformat(), # Usa data atual para atualização
-                        "usuario": user_name, # Salva o nome do usuário que preencheu
-                        "status_analise": status_analise # Salva o status da análise
-                    }
-
-                    # Carrega todos os resultados, remove o resultado existente para o período (se houver) e adiciona o novo/atualizado
-                    all_results = load_results()
-                    all_results = [r for r in all_results if not (r["indicator_id"] == new_result["indicator_id"] and r["data_referencia"] == new_result["data_referencia"])]
-                    all_results.append(new_result)
-
-                    # *** CORREÇÃO AQUI: Verificar o resultado de save_results ***
-                    if save_results(all_results): # Salva a lista atualizada de resultados no DB e verifica
-                         with st.spinner("Salvando resultado..."):
-                            st.success(f"✅ Resultado adicionado/atualizado com sucesso para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')}!")
-                            time.sleep(2) # Pequeno delay
-
-                         # Limpa o estado da sessão associado ao formulário de preenchimento para este período/indicador
-                         if variable_values_key in st.session_state:
-                            del st.session_state[variable_values_key]
-                         if calculated_result_state_key in st.session_state:
-                            del st.session_state[calculated_result_state_key]
-                         # Limpar inputs de texto (observacoes e 5w2h) - Streamlit geralmente faz isso sozinho em reruns de formulários, mas podemos limpar explicitamente se necessário
-                         # del st.session_state[f"obs_input_{selected_indicator['id']}_{selected_period_str}"] # Exemplo
-                         scroll_to_top() # Rola para o topo
-                         st.rerun() # Reinicia a aplicação
-                    else:
-                         st.error(f"❌ Erro ao salvar o resultado para {datetime(selected_year, selected_month, 1).strftime('%B/%Y')} no banco de dados. Verifique o console para detalhes do erro.")
-                         # Não limpa os inputs para permitir correção
-
-                else:
-                    st.warning("⚠️ Por favor, informe o resultado ou calcule-o antes de salvar.")
+            # === FIM DA CORREÇÃO: Bloco `elif submitted:` agora está dentro do formulário ===
+            # (A lógica de salvamento foi movida para o 'elif submitted:' dentro do st.form)
 
 
         st.subheader("Resultados Anteriores")
@@ -2352,7 +2417,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                         # Botão de exclusão
                         with col6:
                              # Adiciona uma chave única para cada botão de exclusão
-                            if st.button("��️", key=f"delete_result_{result.get('data_referencia')}_{selected_indicator['id']}_fill"):
+                            if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}_{selected_indicator['id']}_fill"):
                                 # Chama a função para deletar o resultado
                                 delete_result(selected_indicator['id'], data_referencia, st.session_state.username)
                                 # O delete_result já chama st.rerun() se for bem-sucedido
@@ -2412,45 +2477,6 @@ def fill_indicator(SETORES, TEMA_PADRAO):
             else:
                 st.info("Nenhum registro de preenchimento encontrado para este indicador.") # Mensagem se não houver logs
     st.markdown('</div>', unsafe_allow_html=True)
-
-# Função auxiliar para obter o status de preenchimento da análise crítica
-def get_analise_status(analise_dict):
-    """Função auxiliar para verificar o status de preenchimento da análise crítica."""
-    if not analise_dict or analise_dict == {}:
-        return "❌ Não preenchida"
-
-    # Verifica se o status já está salvo na própria análise (compatibilidade)
-    if "status_preenchimento" in analise_dict:
-        return analise_dict["status_preenchimento"]
-
-    # Se não estiver salvo, calcula o status
-    campos_relevantes = ["what", "why", "who", "when", "where", "how", "howMuch"]
-    # Conta quantos campos têm conteúdo não vazio após remover espaços
-    campos_preenchidos = sum(1 for campo in campos_relevantes if campo in analise_dict and analise_dict[campo] and analise_dict[campo].strip())
-    total_campos = len(campos_relevantes)
-
-    if campos_preenchidos == 0: return "❌ Não preenchida"
-    elif campos_preenchidos == total_campos: return "✅ Preenchida completamente"
-    else: return f"⚠️ Preenchida parcialmente ({campos_preenchidos}/{total_campos})"
-
-def calculate_status(result, meta, comparacao):
-    """Calcula o status do resultado ('Acima da Meta', 'Abaixo da Meta', 'N/A')."""
-    try:
-        # Tenta converter resultado e meta para float. Se falhar, não é numérico.
-        # Trata meta None como 0.0 para comparações numéricas
-        result_float = float(result)
-        meta_float = float(meta if meta is not None else 0.0)
-
-        if comparacao == "Maior é melhor":
-            return "Acima da Meta" if result_float >= meta_float else "Abaixo da Meta"
-        elif comparacao == "Menor é melhor":
-            return "Acima da Meta" if result_float <= meta_float else "Abaixo da Meta"
-        else:
-            # Não deve acontecer com as opções atuais, mas como fallback seguro
-            return "N/A"
-    except (ValueError, TypeError):
-        # Se a conversão de resultado ou meta falhar, o status é N/A
-        return "N/A"
 
 
 def show_dashboard(SETORES, TEMA_PADRAO):
