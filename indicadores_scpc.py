@@ -4284,9 +4284,14 @@ def main():
             st.error("Você não tem permissão para acessar esta página.")
             st.session_state.page = "Dashboard"
             st.rerun()
-    elif st.session_state.page == "Visão Geral":
-        # Visualizadores e Operadores podem acessar, Admin também
-        show_overview()
+    elif st.session_state.page == "Gerenciar Usuários":
+         # Verifica permissão (apenas Admin)
+        if user_type == "Administrador":
+            show_user_management(SETORES)
+        else:
+            st.error("Você não tem permissão para acessar esta página.")
+            st.session_state.page = "Dashboard"
+            st.rerun()        
     elif st.session_state.page == "Configurações":
         # Verifica permissão (apenas Admin)
         if user_type == "Administrador":
@@ -4295,14 +4300,9 @@ def main():
             st.error("Você não tem permissão para acessar esta página.")
             st.session_state.page = "Dashboard"
             st.rerun()
-    elif st.session_state.page == "Gerenciar Usuários":
-         # Verifica permissão (apenas Admin)
-        if user_type == "Administrador":
-            show_user_management(SETORES)
-        else:
-            st.error("Você não tem permissão para acessar esta página.")
-            st.session_state.page = "Dashboard"
-            st.rerun()
+    elif st.session_state.page == "Visão Geral":
+        # Visualizadores e Operadores podem acessar, Admin também
+        show_overview()    
 
 
     # --- Agendamento de Backup (Thread) ---
