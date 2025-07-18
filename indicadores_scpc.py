@@ -4212,7 +4212,7 @@ def main():
 
     # Define os itens do menu baseados no tipo de usuário
     if user_type == "Administrador":
-        menu_items = ["Dashboard", "Criar Indicador", "Editar Indicador", "Preencher Indicador", "Visão Geral", "Configurações", "Gerenciar Usuários"]
+        menu_items = ["Dashboard", "Criar Indicador", "Editar Indicador", "Preencher Indicador", "Configurações", "Gerenciar Usuários", "Visão Geral"]
     elif user_type == "Operador":
         # Operadores não podem criar/editar/gerenciar usuários/configurações
         menu_items = ["Dashboard", "Preencher Indicador", "Visão Geral"]
