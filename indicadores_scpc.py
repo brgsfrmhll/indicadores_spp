@@ -976,22 +976,25 @@ def log_user_action(action, username_affected, user_performed):
 # Lista de Setores (Mantida)
 SETORES = [
     "Superintendência", "Agência Transfusional (AGT)", "Ala A", "Ala B",
-    "Ala C", "Ala E", "Almoxarifado", "Assistência Social",
+    "Ala C", "Ala D", "Ala E", "Almoxarifado", "Assistência Social",
     "Ambulatório Bariátrica/Reparadora", "CCIH", "CDI", "Centro Cirúrgico",
     "Centro Obstétrico", "CME", "Comercial/Tesouraria", "Compras",
-    "Comunicação", "Contabilidade", "CPD (TI)", "DPI",
+    "Comunicação", "Contabilidade", "Centro Processamento Dados (TI)", "DPI (Departamento de Parceria e Inovação)",
     "Diretoria Assistencial", "Diretoria Clínica", "Diretoria Financeira",
-    "Diretoria Técnica", "Departamento Pessoal (RH)", "Ambulatório Egresso (Especialidades)",
-    "EMTN", "Farmácia Clínica", "Farmácia Central", "Farmácia Satélite Centro Cirúrgico",
+    "Diretoria Técnica", "Ambulatório Egresso (Especialidades)", "EMTN", 
+    "Farmácia Clínica", "Farmácia Central", "Farmácia Satélite Centro Cirúrgico",
     "Farmácia Oncológica (Manipulação Quimioterapia)", "Farmácia UNACON", "Farmácia Satélite UTI",
     "Faturamento", "Fisioterapia", "Fonoaudiologia", "Gestão de Leitos",
-    "Hemodiálise", "Higienização", "Internação/Autorização (Convênio)", "Iodoterapia",
-    "Laboratório de Análises Clínicas", "Lavanderia", "Manutenção Equipamentos", "Manutenção Predial",
-    "Maternidade", "Medicina do Trabalho", "NHE", "Odontologia", "Ouvidoria", "Pediatria",
-    "Portaria/Gestão de Acessos", "Psicologia", "Qualidade", "Quimioterapia (Salão de Quimio)",
-    "Recepção", "Recrutamento e Seleção", "Regulação", "SAME", "SESMT",
-    "Serviço de Nutrição e Dietética", "SSB", "Urgência e Emergência/Pronto Socorro",
-    "UNACON", "UTI Adulto", "UTI Neo e Pediátrica"
+    "Gestão de Pessoas (RH, Departamento Pessoal)", "Hemodiálise", "Higienização", 
+    "Internação/Autorização (Convênio)", "Iodoterapia", "Laboratório de Análises Clínicas", 
+    "Lavanderia", "Manutenção Equipamentos", "Manutenção Predial", "Maternidade", 
+    "Medicina do Trabalho", "Métodos Endoscópicos", "NHE (Núcleo Hospitalar Epidemiológico)", 
+    "NIR (Núcleo Interno de Regulação)", "NSP (Núcleo de Segurança do Paciente)", 
+    "Odontologia", "Ouvidoria", "Pediatria", "Portaria/Gestão de Acessos", 
+    "Psicologia", "Qualidade", "Quimioterapia (Salão de Quimio)", "Recepção e Remoções",
+    "Regulação", "SAME", "SESMT", "Serviço de Nutrição e Dietética", 
+    "SSB", "Urgência e Emergência/Pronto Socorro", "UNACON", "UTI Adulto", 
+    "UTI Neo e Pediátrica"
 ]
 
 # Tipos de Gráfico (Mantidos)
@@ -2093,7 +2096,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                 variable_values = st.session_state.get(variable_values_key, {})
                 # A lógica de cálculo já está na seção de teste dentro do formulário.
                 # Apenas garantimos que o rerun aconteça.
-                st.rerun()
+                
 
             # Lógica ao clicar no botão "Salvar"
             elif submitted:
