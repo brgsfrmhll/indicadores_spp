@@ -1987,6 +1987,12 @@ def fill_indicator(SETORES, TEMA_PADRAO):
 
                         # Chave para armazenar o resultado calculado no estado da sessão
                         calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
+                        
+                        # --- INÍCIO DO CÓDIGO DE DEPURARÇÃO ---
+                        st.write(f"DEBUG: calculated_result_state_key = {calculated_result_state_key}")
+                        st.write(f"DEBUG: st.session_state.get({calculated_result_state_key}) = {st.session_state.get(calculated_result_state_key)}")
+                        # --- FIM DO CÓDIGO DE DEPURARÇÃO ---
+
                         # Exibe o resultado calculado se ele existir no estado da sessão
                         if st.session_state.get(calculated_result_state_key) is not None:
                             calculated_result = st.session_state[calculated_result_state_key]
@@ -1999,12 +2005,12 @@ def fill_indicator(SETORES, TEMA_PADRAO):
 
                             if comparacao_tipo == "Maior é melhor":
                                 if calculated_result >= meta_valor:
-                                    st.success(f"�� Meta Atingida! O resultado ({result_display}) é maior ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+                                    st.success(f"🎉 Meta Atingida! O resultado ({result_display}) é maior ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
                                 else:
                                     st.warning(f"⚠️ Meta Não Atingida. O resultado ({result_display}) é menor que a meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
                             elif comparacao_tipo == "Menor é melhor":
                                 if calculated_result <= meta_valor:
-                                    st.success(f"�� Meta Atingida! O resultado ({result_display}) é menor ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
+                                    st.success(f"🎉 Meta Atingida! O resultado ({result_display}) é menor ou igual à meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
                                 else:
                                     st.warning(f"⚠️ Meta Não Atingida. O resultado ({result_display}) é maior que a meta ({meta_valor:.2f}{selected_indicator.get('unidade', '')}).")
 
@@ -2090,6 +2096,13 @@ def fill_indicator(SETORES, TEMA_PADRAO):
             # Lógica ao clicar no botão "Calcular Resultado" (fora do form principal)
             # Este bloco é executado APÓS o form principal ser processado.
             if test_button_clicked:
+                # --- INÍCIO DO CÓDIGO DE DEPURARÇÃO ---
+                st.write(f"DEBUG: 'Calcular Resultado' button was clicked.")
+                st.write(f"DEBUG: formula_str = {selected_indicator.get('formula', '')}")
+                st.write(f"DEBUG: variable_values_key = {variable_values_key}")
+                st.write(f"DEBUG: st.session_state.get({variable_values_key}) = {st.session_state.get(variable_values_key)}")
+                # --- FIM DO CÓDIGO DE DEPURARÇÃO ---
+
                 formula_str = selected_indicator.get("formula", "")
                 variable_values = st.session_state.get(variable_values_key, {})
 
@@ -2101,12 +2114,15 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                     try:
                         calculated_result = float(sympify(formula_str))
                         st.session_state[calculated_result_state_key] = calculated_result
+                        st.write(f"DEBUG: Calculated fixed result: {calculated_result}") # DEBUG
                     except (SympifyError, ValueError) as e:
                         st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
                         st.session_state[calculated_result_state_key] = None
+                        st.write(f"DEBUG: Error calculating fixed result: {e}") # DEBUG
                     except Exception as e:
                         st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
                         st.session_state[calculated_result_state_key] = None
+                        st.write(f"DEBUG: Unexpected error calculating fixed result: {e}") # DEBUG
                 elif variable_values:
                     # Caso da fórmula com variáveis
                     try:
@@ -2120,18 +2136,22 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                         # Avalia a expressão com os valores de teste
                         calculated_result = float(expr.subs(subs_dict))
                         st.session_state[calculated_result_state_key] = calculated_result
+                        st.write(f"DEBUG: Calculated variable result: {calculated_result}") # DEBUG
                     except SympifyError as e:
                         st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
                         st.session_state[calculated_result_state_key] = None
+                        st.write(f"DEBUG: Error calculating variable result (SympifyError): {e}") # DEBUG
                     except ZeroDivisionError:
                         st.error("❌ Erro ao calcular a fórmula: Divisão por zero com os valores de teste fornecidos.")
                         st.session_state[calculated_result_state_key] = None
+                        st.write(f"DEBUG: Error calculating variable result (ZeroDivisionError)") # DEBUG
                     except Exception as e:
                         if "cannot create 'dict_keys' instances" in str(e):
                             st.error("❌ Erro interno ao processar as variáveis da fórmula. Verifique se as variáveis na fórmula correspondem às variáveis definidas para o indicador.")
                         else:
                             st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
                         st.session_state[calculated_result_state_key] = None
+                        st.write(f"DEBUG: Unexpected error calculating variable result: {e}") # DEBUG
 
             # Lógica ao clicar no botão "Salvar"
             elif submitted:
@@ -2384,7 +2404,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
         log_results = [r for r in all_results_log if r.get("indicator_id") == selected_indicator["id"]]
         # Ordena os logs pela data de atualização
         log_results = sorted(log_results, key=lambda x: x.get("data_atualizacao", x.get("data_criacao", "")), reverse=True) # Usa data_criacao como fallback
-        with st.expander("�� Log de Preenchimentos (clique para visualizar)", expanded=False):
+        with st.expander("📜 Log de Preenchimentos (clique para visualizar)", expanded=False):
             if log_results:
                 log_data_list = []
                 unidade_log = selected_indicator.get('unidade', '') # Unidade para exibir nos resultados salvos
@@ -2425,7 +2445,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
             else:
                 st.info("Nenhum registro de preenchimento encontrado para este indicador.") # Mensagem se não houver logs
     st.markdown('</div>', unsafe_allow_html=True)
-
+    
 # Função auxiliar para obter o status de preenchimento da análise crítica
 def get_analise_status(analise_dict):
     """Função auxiliar para verificar o status de preenchimento da análise crítica."""
