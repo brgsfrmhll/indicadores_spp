@@ -1855,7 +1855,6 @@ def fill_indicator(SETORES, TEMA_PADRAO):
     user_sectors = st.session_state.user_sectors # Lista de setores
     user_name = st.session_state.get("username", "Usuário não identificado")
 
-
     # Filtrar indicadores para Operadores: só mostra indicadores onde o setor responsável está na lista de setores do usuário
     if user_type == "Operador":
         filtered_indicators = [ind for ind in indicators if ind["responsavel"] in user_sectors]
@@ -1867,7 +1866,6 @@ def fill_indicator(SETORES, TEMA_PADRAO):
     else:
         # Administradores e Visualizadores veem todos os indicadores
         filtered_indicators = indicators
-
 
     indicator_names = [ind["nome"] for ind in filtered_indicators]
     # Use uma chave única para o selectbox de seleção de indicador
@@ -1960,7 +1958,6 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                 if selected_indicator.get("formula") and selected_indicator.get("variaveis"):
                     st.markdown("#### Valores das Variáveis")
                     st.info(f"Insira os valores para calcular o resultado usando a fórmula: `{selected_indicator['formula']}`")
-
                     vars_to_fill = list(selected_indicator["variaveis"].items())
                     if vars_to_fill:
                         # Inputs para os valores das variáveis
@@ -1988,6 +1985,38 @@ def fill_indicator(SETORES, TEMA_PADRAO):
 
                         # Chave para armazenar o resultado calculado no estado da sessão
                         calculated_result_state_key = f"calculated_result_{selected_indicator['id']}_{selected_period_str}"
+
+                        # === INÍCIO DA CORREÇÃO: Lógica de cálculo movida para DENTRO do formulário ===
+                        if test_button_clicked:
+                            formula_str = selected_indicator.get("formula", "")
+                            variable_values = st.session_state.get(variable_values_key, {}) # Recupera os valores preenchidos no form
+
+                            if formula_str:
+                                try:
+                                    formula_vars_in_string = sorted(list(set(re.findall(r'[a-zA-Z]+', formula_str))))
+                                    # Filtra variable_values para incluir apenas aquelas presentes na formula_str
+                                    filtered_variable_values = {k: v for k, v in variable_values.items() if k in formula_vars_in_string}
+
+                                    var_symbols = symbols(list(filtered_variable_values.keys()))
+                                    expr = sympify(formula_str, locals={s: symbols(s) for s in formula_vars_in_string})
+                                    subs_dict = {symbols(var): float(val) for var, val in filtered_variable_values.items()}
+                                    calculated_result_val = float(expr.subs(subs_dict))
+
+                                    st.session_state[calculated_result_state_key] = calculated_result_val
+                                except SympifyError as e:
+                                    st.error(f"❌ Erro ao calcular a fórmula: Verifique a sintaxe. Detalhes: {e}")
+                                    st.session_state[calculated_result_state_key] = None
+                                except ZeroDivisionError:
+                                    st.error("❌ Erro ao calcular a fórmula: Divisão por zero com os valores fornecidos.")
+                                    st.session_state[calculated_result_state_key] = None
+                                except Exception as e:
+                                    st.error(f"❌ Erro inesperado ao calcular a fórmula: {e}")
+                                    st.session_state[calculated_result_state_key] = None
+                            else:
+                                st.warning("⚠️ Por favor, insira uma fórmula para calcular.")
+                                st.session_state[calculated_result_state_key] = None
+                        # === FIM DA CORREÇÃO ===
+
                         # Exibe o resultado calculado se ele existir no estado da sessão
                         if st.session_state.get(calculated_result_state_key) is not None:
                             calculated_result = st.session_state[calculated_result_state_key]
@@ -2088,15 +2117,8 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                 # Botão principal para salvar o resultado
                 submitted = st.form_submit_button("✔️ Salvar")
 
-            # Lógica ao clicar no botão "Calcular Resultado" (fora do form principal)
-            # Este bloco é executado APÓS o form principal ser processado,
-            # mas as ações dentro dele (como rerun) afetam o próximo ciclo.
-            if test_button_clicked:
-                formula_str = selected_indicator.get("formula", "")
-                variable_values = st.session_state.get(variable_values_key, {})
-                # A lógica de cálculo já está na seção de teste dentro do formulário.
-                # Apenas garantimos que o rerun aconteça.
-                
+            # === FIM DA CORREÇÃO: Bloco `if test_button_clicked:` anterior foi removido daqui ===
+            # (O bloco 'if test_button_clicked:' que estava aqui fora foi movido para dentro do formulário.)
 
             # Lógica ao clicar no botão "Salvar"
             elif submitted:
@@ -2261,7 +2283,6 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                                     st.markdown("**Onde:** " + analise_critica_dict.get("where", ""))
                                     st.markdown("**Como:** " + analise_critica_dict.get("how", ""))
                                     st.markdown("**Quanto custa:** " + analise_critica_dict.get("howMuch", ""))
-
                         # Botão de exclusão para este resultado
                         with cols_data[len(selected_indicator["variaveis"])+4]:
                              # Adiciona uma chave única para cada botão de exclusão
@@ -2331,7 +2352,7 @@ def fill_indicator(SETORES, TEMA_PADRAO):
                         # Botão de exclusão
                         with col6:
                              # Adiciona uma chave única para cada botão de exclusão
-                            if st.button("🗑️", key=f"delete_result_{result.get('data_referencia')}_{selected_indicator['id']}_fill"):
+                            if st.button("��️", key=f"delete_result_{result.get('data_referencia')}_{selected_indicator['id']}_fill"):
                                 # Chama a função para deletar o resultado
                                 delete_result(selected_indicator['id'], data_referencia, st.session_state.username)
                                 # O delete_result já chama st.rerun() se for bem-sucedido
